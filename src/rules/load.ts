@@ -76,7 +76,12 @@ function validate(raw: any, file: string, index: number, pack: string): Rule {
 }
 
 function loadDir(dir: string): Rule[] {
-  if (!existsSync(dir)) return [];
+  // Strict for the same reason a malformed rule is: a mistyped path in
+  // rules.paths that quietly contributes nothing is a set of rules everyone
+  // believes is protecting them, right up until someone checks.
+  if (!existsSync(dir)) {
+    throw new Error(`rules directory not found: ${dir}`);
+  }
 
   const rules: Rule[] = [];
   for (const entry of readdirSync(dir).sort()) {

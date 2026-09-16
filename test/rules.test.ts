@@ -50,6 +50,15 @@ describe("the bundled rule corpus", () => {
     ]);
   });
 
+  /**
+   * A mistyped path in rules.paths used to contribute nothing at all and say
+   * nothing about it, which is a set of rules everyone believes is protecting
+   * them. Strict for the same reason a malformed rule is.
+   */
+  it("refuses a rules directory that does not exist", () => {
+    expect(() => loadRules([join(dir, "typo")])).toThrow(/not found/);
+  });
+
   it("gives every rule an enforcement its tier can actually run", () => {
     const rules = loadRules();
     const mechanical = rules.filter((r) => r.tier === "mechanical");
