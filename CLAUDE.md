@@ -4,6 +4,16 @@ A rule-enforcement and test-contract system for AI-written production code.
 Target stack of the repos it checks: React/Vite/TypeScript/TanStack Query,
 Hono/TypeScript, Postgres, AWS/Terraform.
 
+**Where things stand and what is next: [ROADMAP.md](ROADMAP.md).** It carries
+the status, the remaining work, and the reasoning behind decisions already made,
+including several that were reached by getting them wrong first.
+
+**The calibration target is `~/code/orders-admin`**, a separate repo: a small
+CRUD app on the target stack that installs this tool as a git dependency. A rule
+change is not finished until it has been run against both the fixtures here and
+that app. Fixtures prove the machinery works; only real code shows how the rules
+behave on code that was not written to be a test case.
+
 ## Commands
 
 ```
@@ -114,8 +124,7 @@ grounding needs.
 - **Fixture prose must not name the verdict it expects.** A header reading
   "VIOLATES be.authz.ownership-check" is evidence handed to the thing under
   test, because the judge reads whole files. Describe the scenario and let the
-  judge work out the answer, or the corpus scores its own hints. The older
-  llm fixtures still carry labelled headers and should be reworded.
+  judge work out the answer, or the corpus scores its own hints.
 - **An llm rule must be able to answer `not-applicable`.** Routing hands a rule
   every file its globs match, and most are irrelevant to it. Forcing a binary
   answer manufactures false positives. Any new llm rule needs fixture cases

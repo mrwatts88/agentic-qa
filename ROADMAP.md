@@ -223,6 +223,27 @@ semgrep, gitleaks, tflint, checkov and eslint are not installed here, so the
 mechanical tier is self-contained in the CLI. Delegating to those tools when
 they happen to be present is a later enhancement, never a requirement.
 
+### The calibration target lives in a separate repo
+
+`~/code/orders-admin` is a small CRUD application on the target stack, built
+normally and deliberately without consulting the rule list, and it installs this
+tool as a git dependency. It exists because fixtures prove the machinery works
+and say nothing about behaviour on code that was not written to be a test case.
+
+It earned its keep immediately. Pointed at its first vertical slice, the
+judgment tier found a real IDOR that had been written without anyone planting
+it: a service loaded a customer by id with no account check, and the delete path
+had the same hole. The contract checker rejected two of its endpoint tests, both
+correctly. The layering rule produced a false positive on a connection-pool
+module, which is how that rule gained its exemption.
+
+It also caught what fixtures structurally could not. When the authz prompt was
+tightened, only real code could show that services and repositories now come
+back `not-applicable` while an actual route handler is still judged.
+
+Work on the two together: a rule change is not finished until it has been run
+against both the fixtures and the app.
+
 ### Start small, then bulk-load the rules
 
 Enumerating all rules first produces hundreds of unenforceable ones and leaves
@@ -262,6 +283,10 @@ topics).
   verdicts: the same corpus scored 19/19 while it was labelled, and 18/19 once
   the labels came off.
 - Unit tests for this tool's own deterministic parts, in `test/`.
+- Published at `github.com/mrwatts88/agentic-qa`, installable as a git
+  dependency, verified by installing it into a clean directory and running the
+  binary there. CI runs on every push.
+- A calibration target: see below.
 - The call sites themselves (`agentic-qa init`): a git pre-commit hook running
   the free tier on staged files, and a Claude Code `PostToolUse` hook that
   reports violations in changed files back to the model after every edit. It
