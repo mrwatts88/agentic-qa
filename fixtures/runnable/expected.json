@@ -1,0 +1,17 @@
+{
+  "note": "Ground truth for mutation grounding. Both tests pass against the correct implementation, so a suite run alone cannot tell them apart. Only breaking the implementation on purpose reveals which one is real.",
+  "expected": {
+    "cart.test.ts::applyCoupon > rejects a coupon that expired before the current time": "upheld",
+    "cart.test.ts::applyCoupon > applies a percentage discount to the cart total": "violated"
+  },
+  "mutations": {
+    "cart.test.ts::applyCoupon > rejects a coupon that expired before the current time": {
+      "breaks": "delete the coupon.expiresAt <= now branch",
+      "expectTestToFail": true
+    },
+    "cart.test.ts::applyCoupon > applies a percentage discount to the cart total": {
+      "breaks": "stop reassigning cart.total, leaving the discount unapplied",
+      "expectTestToFail": false
+    }
+  }
+}

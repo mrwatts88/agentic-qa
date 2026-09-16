@@ -1,0 +1,9 @@
+testGlobs:
+  - "*.test.ts"
+
+judge:
+  model: haiku
+  concurrency: 4
+  maxBudgetUsd: 0.25
+
+failOnUnverifiable: false

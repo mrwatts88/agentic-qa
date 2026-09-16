@@ -2,6 +2,9 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+# vitest JSON reporter output, written next to whatever root it ran against
+.vitest/
+
 # Judge response cache and scratch state. The contract ledger itself
 # (.qa/contracts.json) IS committed: it is the durable record of verdicts.
 .qa/cache/
