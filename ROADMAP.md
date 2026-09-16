@@ -153,6 +153,21 @@ And prose is an injection surface. A false comment can talk the judge out of a
 real finding as easily as a true one can correct it. This is the sharpest
 argument for mutation grounding: an experiment cannot be persuaded.
 
+### The corpus was scoring its own hints, and the scores were inflated
+
+Every judgment score reported before the fixtures were de-labelled was too high.
+The headers said things like "VIOLATES be.errors.no-silent-fallback", the judge
+reads whole files, and a header naming one rule steers it away from the others.
+Stripping the labels dropped a corpus that had scored 19/19 to 18/19, and the
+file that changed was the one whose old header had announced which rule it was
+supposed to be about.
+
+This is worth remembering as a general hazard rather than a one-off: a fixture
+corpus that describes itself is grading the judge on an exam it has already
+annotated. Ground truth belongs in `expected.json`, which the judge never reads.
+Pairs now carry identical neutral headers so the prose cannot discriminate even
+by accident.
+
 ### One finding per rule per file, which is not the same as one problem
 
 `be.authz.ownership-check` once reported an unscoped read in a service and said

@@ -1,9 +1,5 @@
 /**
- * VIOLATES be.authz.ownership-check.
- *
- * The session is checked, so the caller is definitely logged in. Nothing checks
- * that the order belongs to them, so any logged-in user can read any order by
- * changing the id in the URL.
+ * Reading a single order through the admin API.
  */
 import { Hono } from "hono";
 import { findOrderById } from "./repositories/orderRepo";

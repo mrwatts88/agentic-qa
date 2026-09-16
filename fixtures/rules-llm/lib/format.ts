@@ -1,10 +1,5 @@
 /**
- * Both llm rules must return not-applicable here.
- *
- * Routing sends every .ts file to both rules, so most files a rule sees have
- * nothing to do with it. A rule that feels obliged to answer ok or violated
- * about pure formatting helpers will eventually answer violated, and that noise
- * is what gets the whole system switched off.
+ * Formatting helpers for money and titles.
  */
 export function formatCurrency(cents: number, locale = "en-GB"): string {
   return new Intl.NumberFormat(locale, {

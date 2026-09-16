@@ -1,9 +1,5 @@
 /**
- * VIOLATES be.errors.no-silent-fallback.
- *
- * When the upstream call fails, the caller receives an empty list that is
- * indistinguishable from "this customer genuinely has no invoices". An outage
- * becomes silently missing data and nothing alerts.
+ * Invoices for a customer, fetched from the billing service.
  */
 import { fetchInvoices } from "./billingClient";
 

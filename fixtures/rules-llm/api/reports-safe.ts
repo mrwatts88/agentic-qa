@@ -1,9 +1,5 @@
 /**
- * Clean control for be.errors.no-silent-fallback.
- *
- * Also catches, also has a try/catch around exactly the same call. The
- * difference is that the failure stays a failure: it is logged with context and
- * rethrown, so the caller cannot mistake it for an empty result.
+ * Invoices for a customer, fetched from the billing service.
  */
 import { fetchInvoices } from "./billingClient";
 import { logger } from "./logger";

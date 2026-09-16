@@ -1,8 +1,5 @@
 /**
- * VIOLATES data.orm.no-query-inside-loop.
- *
- * One query for the orders, then one more per order. Invisible against five
- * rows in development, and the most common performance bug in production.
+ * Recent orders with their customers, for the dashboard.
  */
 import { orderRepo, customerRepo } from "./repositories/orderRepo";
 

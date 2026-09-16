@@ -1,5 +1,12 @@
 {
-  "note": "Ground truth for the llm rule tier. Each violating file is paired with a clean control that is structurally almost identical, so a rule matching on shape rather than meaning will fail here. The booking pair differs only by moving the guard into the WHERE clause; the dashboard pair both loop, and only one does I/O inside the loop. lib/format.ts must come back not-applicable for every rule: staying quiet about irrelevant files is a requirement, not a nicety.",
+  "note": "Ground truth for the llm rule tier. It lives here, and only here, because the judge reads whole files and never reads this one: a fixture header announcing VIOLATES some.rule is a hint handed to the thing under test, and a corpus that labels its own answers partly scores its hints. Each pair therefore carries identical, neutral headers, so the prose cannot discriminate between them even by accident.",
+  "pairs": {
+    "authz": "orders.ts reads an order by id and checks only that a session exists; orders-safe.ts is the same route, framework and repository call, differing only by the ownership comparison. orders-delete.ts and orders-delete-safe.ts are the same contrast on a delete, which is how the rule was shown to cover mutations and not only reads.",
+    "silent-fallback": "reports.ts turns an upstream failure into an empty list indistinguishable from a genuine empty result; reports-safe.ts catches the same call and rethrows, so the failure stays a failure. reports-ignored.ts repeats the violation and carries an exception naming the rule and nothing else: its verdict must stay violated while the finding is withheld, which is what separates suppression from persuasion.",
+    "read-then-write": "booking.ts reads a count, decides, then writes, so two concurrent callers can both pass; booking-safe.ts moves the guard into the WHERE clause and decides on the affected row count.",
+    "n-plus-one": "dashboard.ts queries once per order inside a loop; dashboard-safe.ts also loops but does no I/O in it, fetching the customers once by the whole set of ids. A rule flagging loops rather than queries-in-loops would wrongly condemn it.",
+    "irrelevant": "lib/format.ts is pure formatting and must come back not-applicable for every rule. Routing sends each rule every .ts file, so most files a rule sees have nothing to do with it, and a rule that feels obliged to answer ok or violated about them will eventually answer violated."
+  },
   "expected": {
     "be.authz.ownership-check": {
       "api/orders.ts": "violated",

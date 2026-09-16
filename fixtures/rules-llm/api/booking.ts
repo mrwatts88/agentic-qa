@@ -1,9 +1,5 @@
 /**
- * VIOLATES data.tx.no-read-then-write-race.
- *
- * Two requests can both read "one seat left", both pass the check, and both
- * write. The transaction does not save it: neither sees the other's uncommitted
- * write under read committed.
+ * Booking a seat on a slot.
  */
 import { withTransaction, seatRepo } from "./repositories/seatRepo";
 

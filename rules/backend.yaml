@@ -68,11 +68,20 @@ rules:
     enforcement:
       kind: llm
       prompt: >
-        This handler loads a record by an identifier taken from the request.
-        Does it verify that the authenticated caller is entitled to that
-        specific record, rather than only that someone is logged in? Answer
-        violated if any authenticated user could obtain another user's record by
-        changing the identifier.
+        This rule is about request handlers. It applies only to code that reads
+        an identifier out of an incoming request, such as a route parameter, a
+        query string or a body, and then loads, updates or deletes a record with
+        it. If the file has no request handling in it, answer not-applicable,
+        however many identifiers its functions take: a service or repository
+        function receiving an id from its caller is not the place this check
+        belongs, and flagging those would condemn almost every function in a
+        codebase.
+        Where the rule does apply, ask whether the handler verifies that the
+        authenticated caller is entitled to that specific record, rather than
+        only that someone is logged in. Answer violated if any authenticated
+        user could reach another user's record by changing the identifier,
+        whether they read it, change it or delete it. A query scoped to the
+        caller's account is a valid check and counts as ok.
 
   - id: be.errors.no-silent-fallback
     statement: Do not turn a failure into a plausible-looking success.

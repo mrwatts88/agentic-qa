@@ -1,9 +1,5 @@
 /**
- * Clean control for be.authz.ownership-check.
- *
- * Structurally almost identical to orders.ts: same framework, same route shape,
- * same repository call, same id taken from the URL. The single difference is
- * the ownership comparison. A rule that cannot tell these two apart is useless.
+ * Reading a single order through the admin API.
  */
 import { Hono } from "hono";
 import { findOrderById } from "./repositories/orderRepo";
