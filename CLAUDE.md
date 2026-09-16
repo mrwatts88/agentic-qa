@@ -40,6 +40,7 @@ grounding needs.
 - `src/rules/route.ts` — which rules apply to which files.
 - `src/rules/mechanical.ts` — runs the pattern tier.
 - `src/rules/llm.ts` — runs the judgment tier, with its own cached ledger.
+- `src/rules/ignore.ts` — the qa-ignore escape hatch, shared by both tiers.
 - `src/pool.ts` — shared bounded concurrency. Not for mutations, which must
   stay serial.
 - `src/hook.ts` — the PostToolUse hook. Reports to the model, never gates.
@@ -106,9 +107,16 @@ grounding needs.
   every file its globs match, and most are irrelevant to it. Forcing a binary
   answer manufactures false positives. Any new llm rule needs fixture cases
   asserting it stays quiet about files it has nothing to say about.
-- **Every rule keeps a working `qa-ignore` escape hatch.** Without a sanctioned
-  way to switch off one rule with a recorded reason, the first false positive
-  gets the whole check disabled instead.
+- **Every rule keeps a working `qa-ignore` escape hatch, in both tiers.**
+  Without a sanctioned way to switch off one rule with a recorded reason, the
+  first false positive gets the whole check disabled instead. The two tiers
+  read it differently, on purpose: a pattern finding points at a line, so the
+  comment must sit on that line or the one above, where it is visible next to
+  what it excuses. A judgment finding is about the whole file and the line it
+  cites is advisory, so the comment counts anywhere in the file. Requiring an
+  exact line there would make the hatch work only by luck.
+  Both tiers share `src/rules/ignore.ts` so they cannot drift on what an
+  exception looks like.
 - **A new mechanical rule needs a clean control file, not just a violating
   one.** `fixtures/rules` exists to prove a rule stays silent on correct code
   that contains the same construct. A rule with no clean control has not been
