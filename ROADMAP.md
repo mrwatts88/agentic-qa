@@ -296,14 +296,31 @@ topics).
 
 ## Next
 
-### 1. Adoption on an existing repo: the baseline ratchet
+### 1. Wire contracts and mutation into the loop
+
+They are barely in it. `init` writes a config, a pre-commit hook and an agent
+hook, and all three run patterns only. It writes no CI workflow, so in a repo
+that installs this tool, `agentic-qa contracts` runs only when somebody types it
+and `agentic-qa mutate` runs nowhere at all. The workflow in this repo was
+hand-written and is not distributed.
+
+Each individual reason is sound: contracts costs money and needs the network, so
+it cannot gate a commit; mutation is slow and rewrites source files, so it
+cannot run per edit. Added together they have quietly left the original idea of
+the project the least automated part of it.
+
+Likely shape: `init` also writes a CI workflow running contracts and the
+judgment rules, and mutation gets a deliberate trigger rather than a schedule,
+such as running only on contracts whose verdict changed since the last run.
+
+### 2. Adoption on an existing repo: the baseline ratchet
 
 Turning a full corpus on an existing codebase produces thousands of violations
 and gets switched off the same afternoon. Snapshot the existing violations, fail
 only on new ones, and require the count to trend down. Every successful linter
 adoption works this way. It has to be designed in, not bolted on.
 
-### 2. Packaging
+### 3. Packaging
 
 Mostly done. The package builds on install via `prepare`, ships `dist/` and the
 rules corpus, and has been verified by packing it, installing the tarball into a
@@ -325,7 +342,20 @@ What is left:
 - **Versioning the rules corpus separately** from the tool, so rules can be
   updated without shipping a new binary, and a repo can pin them.
 
-### 3. Bulk-load the rules corpus
+### 4. Bulk-load the rules corpus
+
+Where the holes are, measured rather than guessed. Of 22 rules: nine come from
+the auth and security chapter, three each from frontend, data and testing, two
+from infrastructure, one from backend architecture, one from the AI-era chapter.
+Five chapters have produced nothing at all: web fundamentals, repo hygiene,
+devops and delivery, observability and ops, performance and reliability.
+
+Infrastructure is the sharpest gap relative to its weight. It is the longest
+chapter in the source and it has yielded two rules, both filed under security,
+with exactly one rule in the whole corpus matching a `.tf` file. An infra pack
+covering state, IAM scope, tagging, and the expand-contract discipline around
+managed databases is probably the most valuable single addition, given the
+target stack runs on Terraform.
 
 Once the ratchet exists, convert the rest of
 `~/code/full-stack-swe` into structured rules. Each one needs a violating
@@ -333,7 +363,7 @@ fixture and a clean control. Expect a meaningful fraction of the prose to be
 background knowledge rather than checkable rules; that part does not belong in
 the corpus.
 
-### 4. Mutation grounding, second pass
+### 5. Mutation grounding, second pass
 
 Working, but narrow. Assumes vitest and finds the implementation by following
 the test file's relative imports. Worth extending to other runners and to tests
