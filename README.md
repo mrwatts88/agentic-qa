@@ -13,11 +13,22 @@ In the repo you want checked:
 
 ```
 npm install --save-dev github:mrwatts88/agentic-qa
-npx agentic-qa init
+npx agentic-qa init --git-hook --claude-hook
 ```
 
-`init` writes a config file, a git pre-commit hook, and a Claude Code hook. It
-never overwrites anything that already exists.
+`init` writes `qa.config.yaml`, and nothing else unless you ask for it. Each
+call site is a flag:
+
+| flag | installs |
+| --- | --- |
+| `--git-hook` | a tracked `hooks/pre-commit`, plus the `prepare` script that activates it |
+| `--claude-hook` | a `PostToolUse` hook in `.claude/settings.json` |
+
+Bare `init` leaves your git config and your agent settings alone and tells you
+what it did not install. Either way it never overwrites a file that exists.
+
+If you took the git hook, commit `hooks/pre-commit`. That is what makes the gate
+reach everyone who clones the repo, instead of only the person who ran `init`.
 
 Then:
 
@@ -131,7 +142,9 @@ drift from what the gate enforces.
   and reports straight back to Claude, in about a quarter of a second. Always
   exits zero: it reports, it never blocks.
 - **On commit** — a git hook. Mechanical tier only, so commits stay fast, free
-  and offline.
+  and offline. It lives in a committed `hooks/` directory, and the `prepare`
+  script points `core.hooksPath` at it on every `npm install`, so a fresh clone
+  is gated without anyone typing a git command.
 - **In CI** — everything, including the judgment tiers. The layer nobody can skip
   with `--no-verify`.
 

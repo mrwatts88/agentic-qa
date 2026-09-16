@@ -111,6 +111,18 @@ grounding needs.
   Note that a unit test of `selectFiles` does not prove a call site uses it.
 - **`init` never overwrites an existing file.** An existing pre-commit hook or
   settings file belongs to whoever wrote it. Report it and leave it alone.
+- **`init` installs nothing that was not asked for.** Each call site is a flag
+  (`--git-hook`, `--claude-hook`); bare `init` writes only `qa.config.yaml` and
+  reports what it left out. A setup command that rewrites someone's git config
+  or agent settings as a side effect is the same defect this tool exists to
+  catch, and it gets the tool uninstalled as fast as a false positive does.
+- **The commit hook is tracked, not written into `.git/hooks`.** Git does not
+  track that directory, so a hook there reaches whoever ran `init` and nobody
+  else. `init --git-hook` writes `hooks/pre-commit` and wires a `prepare` script
+  that points `core.hooksPath` at it, so a clone is gated by `npm install`
+  alone. `install-hooks` must no-op quietly — under `CI`, outside a git repo,
+  with no `hooks/` directory — because it runs during every install, and a
+  setup step that fails an install gets deleted.
 - **The llm tier is opt-in (`--llm`) and never runs in a git hook.** It costs
   money and needs the network. The mechanical tier is what gates a commit.
 - **The judge reads comments as evidence.** It is given whole files, so prose

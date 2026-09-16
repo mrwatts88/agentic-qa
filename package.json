@@ -17,7 +17,7 @@
     "ROADMAP.md"
   ],
   "scripts": {
-    "prepare": "npm run build",
+    "prepare": "npm run build && (node dist/cli.js install-hooks || true)",
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
     "test": "vitest run",

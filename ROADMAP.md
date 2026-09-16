@@ -81,6 +81,57 @@ gate enforces.
 - **Scheduled whole-repo audit** — a fourth cadence. Per-diff checks
   structurally cannot see "this is the fourth way we validate things".
 
+### CI is documented, not generated
+
+`init` does not write a CI workflow. It is provider-specific, it is committed,
+and it spends money on every push, so generating one as a side effect of a setup
+command is the sort of helpfulness this project exists to catch. It also cannot
+finish the job: the judgment tiers need an API key as a repository secret, which
+`init` cannot provision, so a manual step is unavoidable whatever we do.
+
+The README documents the commands instead, because developers already know how
+to run a command in their own CI, and `.github/workflows/qa.yml` here is a
+working example. An opt-in `init --ci github` that writes the workflow and
+prints which secret to add is a reasonable convenience later, not the default.
+
+What belongs there: the mechanical tier again as cheap insurance against
+`--no-verify`, plus `rules --llm` and `contracts`, the two that cannot gate a
+commit because they cost money and need the network.
+
+### `init` installs nothing you did not ask for
+
+Each call site is a flag: `--git-hook`, `--claude-hook`. Bare `init` writes
+`qa.config.yaml` and stops, then reports what it did not install so the rest is
+still discoverable.
+
+The tool's own thesis is that unrequested helpfulness is a defect, and a setup
+command that rewrites your git configuration and your agent settings because you
+typed six words is exactly that. It is also the practical choice: a tool that
+surprises someone on first contact gets uninstalled before it can demonstrate
+anything, which is the same failure mode as a false positive. Opting in costs
+one flag, and the README documents the full line.
+
+This sits alongside "never overwrite an existing file"; they are the same
+principle applied to what `init` writes and to what is already there.
+
+### Hooks reach a repo the way husky's do
+
+A hook in `.git/hooks` is untracked, so it reaches whoever ran `init` and nobody
+else — a per-developer gate wearing the costume of a per-repo one. `init`
+therefore writes a tracked `hooks/pre-commit` and adds a `prepare` script
+pointing `core.hooksPath` at it. npm runs `prepare` on install, so the git
+config change happens inside something every developer already does.
+
+Two traps, both of which husky documents having hit:
+
+- `npm ci --omit=dev` runs `prepare` with the tool absent, so the line ends in
+  `|| true`, and `install-hooks` itself no-ops rather than failing: under `CI`,
+  outside a git repository, and with no `hooks/` directory to point at.
+- An existing `prepare` script belongs to whoever wrote it. `init` adds one only
+  where there is none, and otherwise prints the exact line to add. That is the
+  single place it touches a file that already exists, and it adds a key rather
+  than changing one.
+
 ### Verdicts are cached and committed
 
 `.qa/contracts.json` is committed. Re-judge only when the claim changed, the
@@ -287,69 +338,38 @@ topics).
   dependency, verified by installing it into a clean directory and running the
   binary there. CI runs on every push.
 - A calibration target: see below.
-- The call sites themselves (`agentic-qa init`): a git pre-commit hook running
-  the free tier on staged files, and a Claude Code `PostToolUse` hook that
-  reports violations in changed files back to the model after every edit. It
-  never overwrites an existing file.
+- The call sites themselves (`agentic-qa init`), each behind its own flag: a
+  tracked `hooks/pre-commit` running the free tier on staged files, activated on
+  every clone by a `prepare` script that sets `core.hooksPath`, and a Claude Code
+  `PostToolUse` hook that reports violations in changed files back to the model
+  after every edit. It installs neither unless asked, and never overwrites an
+  existing file. Verified end to end: in a scratch repo, `init --git-hook`
+  followed by `git commit` of a file storing a token in `localStorage` is
+  refused by the hook.
 
 ---
 
 ## Next
 
-### 1. Wire contracts and mutation into the loop
+### 1. Give mutation a trigger
 
-They are barely in it. `init` writes a config, a pre-commit hook and an agent
-hook, and all three run patterns only. It writes no CI workflow, so in a repo
-that installs this tool, `agentic-qa contracts` runs only when somebody types it
-and `agentic-qa mutate` runs nowhere at all. The workflow in this repo was
-hand-written and is not distributed.
+The other two now have somewhere to run. `contracts` and `rules --llm` belong in
+CI, which the README documents rather than generates, and the commit gate
+reaches every clone instead of only the developer who ran `init` (see "CI is
+documented, not generated" and "Hooks reach a repo the way husky's do").
 
-Each individual reason is sound: contracts costs money and needs the network, so
-it cannot gate a commit; mutation is slow and rewrites source files, so it
-cannot run per edit. Added together they have quietly left the original idea of
-the project the least automated part of it.
+`agentic-qa mutate` still runs nowhere but by hand, and that is the piece of the
+original idea which is least automated. The reason is sound as far as it goes:
+it is slow and it rewrites real source files, so it cannot sit in a commit hook
+or fire after every agent edit, and running the whole suite on every push would
+be wasteful enough that someone would delete the job.
 
-**CI, decided.** Do not write a workflow by default. It is provider-specific,
-it is committed, and it spends money on every push, so generating one as a side
-effect of a setup command is the sort of helpfulness this project exists to
-catch. It also cannot finish the job: the judgment tiers need an API key as a
-repository secret, which `init` cannot provision, so there is an unavoidable
-manual step whatever we do.
-
-Instead the README documents the commands, because developers already know how
-to run a command in their own CI, and whether that is GitHub Actions, GitLab or
-anything else is their business. An opt-in `init --ci github` that writes the
-workflow and prints which secret to add is a reasonable convenience later, not
-the default.
-
-What belongs in CI: the mechanical tier again as cheap insurance against
-`--no-verify`, plus `rules --llm` and `contracts`, the two that cannot gate a
-commit because they cost money and need the network. Mutation does not belong on
-every push; it is slow and rewrites source files. Give it a deliberate trigger,
-most likely only the contracts whose verdict changed since the last run.
-
-**Hook distribution, decided.** The pre-commit hook currently lands in
-`.git/hooks/`, which git does not track, so it reaches whoever ran `init` and
-nobody else. The commit gate is therefore per-developer rather than per-repo.
-
-Take the husky approach, which solves this without asking anyone to type a git
-command. Husky keeps its hooks in a committed directory, adds `"prepare":
-"husky"` to package.json, and relies on npm running `prepare` automatically on
-install; their docs are explicit that a developer cloning the repo only needs
-`npm install`. The `core.hooksPath` change happens inside something every
-developer already does.
-
-For us: `init` writes a committed `hooks/pre-commit`, and adds a `prepare`
-script that points `core.hooksPath` at it. Two things to get right, both of
-which husky documents having hit:
-
-- Installing without dev dependencies (`npm ci --omit=dev`) means the tool is
-  not there when `prepare` runs, so the installer must exit quietly rather than
-  fail the install. Same for `CI=true`, where hooks are pointless.
-- Appending to an existing `prepare` script is more invasive than writing a
-  file, and `init` currently never touches anything that already exists. Either
-  append carefully or, more in keeping with the rest of `init`, print the line
-  to add and let the human add it.
+The likely shape is a selection rather than a schedule: ground only the
+contracts whose verdict changed since the last run, which the committed ledger
+already knows. That turns a full re-grounding into a handful of mutations on the
+tests that just started claiming something new, cheap enough for a nightly job
+or a labelled pull request. Needs a `--changed` selection over the ledger, and a
+decision about where it is invoked from.
 
 ### 2. Adoption on an existing repo: the baseline ratchet
 

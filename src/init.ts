@@ -1,17 +1,42 @@
-import { existsSync, mkdirSync, writeFileSync, chmodSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync, readFileSync, chmodSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 
 /**
- * Scaffolds the three call sites into a repo.
+ * Scaffolds the call sites into a repo, and only the ones that were asked for.
  *
- * Never overwrites. An existing pre-commit hook or settings file belongs to
- * whoever wrote it, and silently replacing it would be exactly the kind of
- * destructive helpfulness this tool exists to catch. Anything already present
- * is reported and left alone.
+ * Two rules, for the same reason. It installs nothing by default beyond its own
+ * config file: a hook that edits someone's git configuration or their agent
+ * settings as a side effect of a setup command is intrusive, however useful it
+ * is. And it never overwrites, because an existing hook or settings file
+ * belongs to whoever wrote it. Anything already present is reported and left
+ * alone.
  */
 export interface InitResult {
   written: string[];
+  /** Files that existed and gained something they did not have before. */
+  updated: string[];
   skipped: { path: string; why: string }[];
+}
+
+/** Which call sites to install. Neither is on unless it was asked for. */
+export interface InitOptions {
+  gitHook: boolean;
+  claudeHook: boolean;
+}
+
+/**
+ * The hooks live in a committed directory, not in `.git/hooks`, which git does
+ * not track. A hook under `.git/hooks` reaches whoever ran `init` and nobody
+ * else, which makes the commit gate per-developer rather than per-repo.
+ */
+export const HOOKS_DIR = "hooks";
+
+/** What a repo adds to its `prepare` script to get the hooks on `npm install`. */
+export function prepareLine(runner: string): string {
+  // `|| true` because `npm ci --omit=dev` runs prepare without the tool
+  // installed. A missing dev dependency must not fail the install.
+  return `${runner} install-hooks || true`;
 }
 
 function preCommit(runner: string): string {
@@ -88,20 +113,106 @@ function put(
   result.written.push(relative);
 }
 
-export function runInit(cwd: string, runner: string): InitResult {
-  const result: InitResult = { written: [], skipped: [] };
+export interface InstallHooksResult {
+  installed: boolean;
+  why: string;
+}
 
-  put(cwd, "qa.config.yaml", QA_CONFIG, result);
-  put(cwd, join(".claude", "settings.json"), claudeSettings(runner), result);
+/**
+ * Points `core.hooksPath` at the committed hooks directory.
+ *
+ * Runs from the repo's `prepare` script, which npm runs on every install, so
+ * a developer cloning the repo needs no git command of their own. That means
+ * it runs in places where installing a hook is wrong or impossible, and every
+ * one of them has to be a quiet no-op rather than a failed install.
+ */
+export function installHooks(cwd: string): InstallHooksResult {
+  if (process.env.CI) return { installed: false, why: "CI, hooks are pointless here" };
+  if (!existsSync(resolve(cwd, ".git")))
+    return { installed: false, why: "not a git repository" };
+  if (!existsSync(resolve(cwd, HOOKS_DIR)))
+    return { installed: false, why: `no ${HOOKS_DIR}/ directory` };
 
-  // Only install a git hook where there is a git repo to install it into.
-  if (existsSync(resolve(cwd, ".git"))) {
-    put(cwd, join(".git", "hooks", "pre-commit"), preCommit(runner), result, true);
-  } else {
+  execFileSync("git", ["config", "core.hooksPath", HOOKS_DIR], { cwd });
+  return { installed: true, why: `core.hooksPath -> ${HOOKS_DIR}` };
+}
+
+/**
+ * Adds the prepare script, if and only if there is no prepare script.
+ *
+ * This is the one place `init` touches a file that already exists, it happens
+ * only behind the git-hook flag, and it adds a key rather than changing one: an
+ * existing `prepare` belongs to whoever wrote it, so that case is reported with
+ * the exact line to add and left alone.
+ */
+function wirePrepare(cwd: string, runner: string, result: InitResult): void {
+  const path = resolve(cwd, "package.json");
+  if (!existsSync(path)) {
+    result.skipped.push({ path: "package.json", why: "no package.json here" });
+    return;
+  }
+
+  const pkg = JSON.parse(readFileSync(path, "utf8"));
+  const existing: string | undefined = pkg.scripts?.prepare;
+
+  if (existing?.includes("install-hooks")) {
+    result.skipped.push({ path: "package.json", why: "prepare already installs the hooks" });
+    return;
+  }
+
+  if (existing) {
+    result.skipped.push({
+      path: "package.json",
+      why: `has its own prepare script; add: ${prepareLine(runner)}`,
+    });
+    return;
+  }
+
+  pkg.scripts = { ...pkg.scripts, prepare: prepareLine(runner) };
+  writeFileSync(path, JSON.stringify(pkg, null, 2) + "\n");
+  result.updated.push("package.json");
+}
+
+/**
+ * Installs the commit gate: the tracked hook, the prepare script that activates
+ * it on install, and the git config for whoever ran this.
+ */
+function installGitHook(cwd: string, runner: string, result: InitResult): void {
+  put(cwd, join(HOOKS_DIR, "pre-commit"), preCommit(runner), result, true);
+  wirePrepare(cwd, runner, result);
+
+  // The person running init should not have to install to get their own hook.
+  const hooks = installHooks(cwd);
+  if (!hooks.installed) {
+    result.skipped.push({ path: "core.hooksPath", why: hooks.why });
+    return;
+  }
+  result.updated.push(`core.hooksPath -> ${HOOKS_DIR}`);
+
+  // An earlier version of init wrote here. Once core.hooksPath is set, git
+  // stops reading this directory, so a stale copy silently does nothing.
+  const legacy = resolve(cwd, ".git", "hooks", "pre-commit");
+  if (existsSync(legacy) && readFileSync(legacy, "utf8").includes("Installed by agentic-qa")) {
     result.skipped.push({
       path: ".git/hooks/pre-commit",
-      why: "not a git repository",
+      why: "superseded by hooks/pre-commit and now inert; safe to delete",
     });
+  }
+}
+
+export function runInit(cwd: string, runner: string, options: InitOptions): InitResult {
+  const result: InitResult = { written: [], updated: [], skipped: [] };
+
+  // The config is the tool's own file, and the command line is what every repo
+  // gets. The call sites that touch anything else are opt-in.
+  put(cwd, "qa.config.yaml", QA_CONFIG, result);
+
+  if (options.claudeHook) {
+    put(cwd, join(".claude", "settings.json"), claudeSettings(runner), result);
+  }
+
+  if (options.gitHook) {
+    installGitHook(cwd, runner, result);
   }
 
   return result;

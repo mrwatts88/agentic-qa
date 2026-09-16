@@ -10,7 +10,7 @@ import { groundAll } from "./contracts/mutate.js";
 import { loadLedger, saveLedger } from "./contracts/ledger.js";
 import { loadRules } from "./rules/load.js";
 import { runHook, readHookPayload } from "./hook.js";
-import { runInit } from "./init.js";
+import { runInit, installHooks, prepareLine } from "./init.js";
 import { selectFiles } from "./rules/select.js";
 import { runMechanical } from "./rules/mechanical.js";
 import { evaluateRules, evaluateLlmRules } from "./rules/evaluate.js";
@@ -19,7 +19,8 @@ import { runLlmRules } from "./rules/llm.js";
 const USAGE = `agentic-qa - rule enforcement for AI-written code
 
 Usage:
-  agentic-qa init [options]         install the git hook and the agent hook
+  agentic-qa init [options]         write qa.config.yaml; add call sites only if asked
+  agentic-qa install-hooks          point core.hooksPath at hooks/ (run from prepare)
   agentic-qa hook                   PostToolUse hook: report on what just changed
   agentic-qa rules [options]        check changed code against the rules corpus
   agentic-qa rules --llm            also run the rules that need a model's judgment
@@ -28,6 +29,8 @@ Usage:
   agentic-qa eval [options]         score the judge against known-correct verdicts
 
 Options:
+  --git-hook          (init) commit gate: tracked hooks/pre-commit + prepare script
+  --claude-hook       (init) Claude Code PostToolUse hook in .claude/settings.json
   --all               re-judge every contract, ignoring the cached ledger
   --staged            only tests in files staged in git
   --model <name>      override judge model (haiku | sonnet | opus)
@@ -53,6 +56,8 @@ async function main(): Promise<number> {
     options: {
       all: { type: "boolean", default: false },
       staged: { type: "boolean", default: false },
+      "git-hook": { type: "boolean", default: false },
+      "claude-hook": { type: "boolean", default: false },
       json: { type: "boolean", default: false },
       model: { type: "string" },
       concurrency: { type: "string" },
@@ -82,21 +87,55 @@ async function main(): Promise<number> {
     return runHook(cwd, filePath);
   }
 
+  // Runs from the repo's prepare script on every npm install, so it must stay
+  // quiet and must never fail an install.
+  if (command === "install-hooks") {
+    const result = installHooks(cwd);
+    if (result.installed) process.stderr.write(pc.dim(`agentic-qa: ${result.why}\n`));
+    return 0;
+  }
+
   if (command === "init") {
-    const result = runInit(cwd, values.runner ?? "npx agentic-qa");
+    const runner = values.runner ?? "npx agentic-qa";
+    const gitHook = values["git-hook"];
+    const claudeHook = values["claude-hook"];
+    const result = runInit(cwd, runner, { gitHook, claudeHook });
 
     for (const path of result.written) {
       process.stdout.write(`${pc.green("wrote")}   ${path}\n`);
     }
+    for (const path of result.updated) {
+      process.stdout.write(`${pc.green("set")}     ${path}\n`);
+    }
     for (const skip of result.skipped) {
       process.stdout.write(`${pc.yellow("skipped")} ${skip.path} ${pc.dim(`(${skip.why})`)}\n`);
     }
+
+    if (gitHook) {
+      process.stdout.write(
+        pc.dim(
+          "\nCommit hooks/pre-commit. It is tracked on purpose: a hook under\n" +
+            ".git/hooks reaches only whoever ran init, so the gate would be\n" +
+            "per-developer. The prepare script points core.hooksPath at it on\n" +
+            `every npm install: ${prepareLine(runner)}\n` +
+            "It runs the free mechanical tier only.\n",
+        ),
+      );
+    }
+
+    // Nothing is installed that was not asked for, so say what was not.
+    if (!gitHook || !claudeHook) {
+      const offer = [
+        gitHook ? null : "  --git-hook      gate commits on the free mechanical tier",
+        claudeHook ? null : "  --claude-hook   report violations back to Claude after each edit",
+      ].filter(Boolean);
+      process.stdout.write(
+        pc.dim(`\nNot installed. Re-run init with a flag to opt in:\n${offer.join("\n")}\n`),
+      );
+    }
+
     process.stdout.write(
-      pc.dim(
-        "\nThe git hook runs the free mechanical tier on commit. The agent hook\n" +
-          "reports violations in changed files back to Claude after each edit.\n" +
-          "Run the judgment rules in CI with: agentic-qa rules --llm\n",
-      ),
+      pc.dim("\nRun the judgment rules in CI with: agentic-qa rules --llm\n"),
     );
     return 0;
   }
