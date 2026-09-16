@@ -249,15 +249,18 @@ topics).
   worthless by breaking the implementation.
 - The rules engine (`agentic-qa rules`): schema, strict loader, path routing
   with excludes, the pattern tier, `qa-ignore`, and scoring against
-  `fixtures/rules`. 8/8 known violations found, 0 false positives on the clean
-  control files.
+  `fixtures/rules`. 14/14 known violations found, 0 false positives across
+  seven clean control files.
 - A corpus of 22 rules across frontend, backend, data, testing and security,
   each with a violating fixture and a clean control.
 - The llm tier (`agentic-qa rules --llm`): the rule judge, per-file and
-  per-prompt caching, and scoring against `fixtures/rules-llm`. 8/8 with no
-  false positives, including telling apart violating and clean files that differ
-  only by an ownership check or by rethrowing instead of returning an empty
-  list.
+  per-prompt caching, and scoring against `fixtures/rules-llm`. 19/19 with
+  nothing in either error direction, including telling apart violating and
+  clean files that differ only by an ownership check, by rethrowing instead of
+  returning an empty list, or by whether the query inside a loop is a query at
+  all. That figure counts only because the fixtures no longer name their own
+  verdicts: the same corpus scored 19/19 while it was labelled, and 18/19 once
+  the labels came off.
 - Unit tests for this tool's own deterministic parts, in `test/`.
 - The call sites themselves (`agentic-qa init`): a git pre-commit hook running
   the free tier on staged files, and a Claude Code `PostToolUse` hook that

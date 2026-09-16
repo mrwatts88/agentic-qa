@@ -175,7 +175,7 @@ violations *and* clean files that contain the exact constructs the rules match
 on, in contexts where they are correct:
 
 ```
-8/8 violations found · 0 false positive(s) on clean files
+14/14 violations found · 0 false positive(s) on clean files
 ```
 
 The clean files are the important half. Missing a problem is disappointing;
