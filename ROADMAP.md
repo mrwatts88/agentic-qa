@@ -422,28 +422,46 @@ by the failure surface of the target stack — TypeScript and React, Hono,
 Postgres, Terraform, secrets, dependencies — and the 22 agreeing with that list
 was a sanity check, not the derivation.
 
-### Derive the corpus from the gap, not from a list
+### Two derivations, because only one of them can find an absence
 
-Now that the engines find the problems, the corpus is only the promises they do
-not already keep. So the order is inverted from the obvious one: enable the
-engines broadly, run them against real code, see what they already catch, and
-write corpus entries for what is left.
+Engines-first tells you what is already covered: enable them broadly, run them
+against real code, write entries for what is left. Cheap, empirical, and it stops
+you transcribing someone else's ruleset by hand.
 
-Generating rules by enumeration first is what the "start small" decision warned
-about, and delegation makes it worse: most of what you would write is already
-enforced, so you would be transcribing someone else's ruleset by hand.
+But it has a blind spot worth more than its economy. **You cannot detect an
+absence by watching output.** If no engine holds any opinion about a concept —
+expand-contract migrations, every endpoint being account-scoped, where cache
+invalidation is allowed to live — then running every engine produces silence
+about it, and silence is indistinguishable from "covered and fine". A corpus
+derived only from engine output ends up shaped by what existing tools happen to
+care about, which is mostly syntax, known vulnerability patterns and code smells.
+The architectural and semantic rules, which are the reason this project exists,
+are exactly the ones that would never appear. The failure mode is seductive:
+thousands of findings firing, looking comprehensive, while missing the things
+that motivated the system.
 
-The sources for the gap, in priority order:
+So the prose corpus is not a nice-to-have and not a checklist for later. It is
+the statement of intent; the engines are an implementation of part of it. The
+audit therefore runs in the direction that can find something missing: walk the
+prose, and for each concept ask what enforces it. Walking engine output and
+asking what is missing cannot answer that question.
 
-1. What engines structurally cannot express — the judgment tier.
-2. House-specific convention, which no public ruleset can know.
-3. Escaped defects: when a real bug ships, ask which rule should have caught it.
-   That is the empirical loop, and the only source on this list grounded in
-   something that actually went wrong.
+That is the enforcement ladder applied one level up. Every concept gets
+classified:
 
-`~/code/full-stack-swe` is a checklist for auditing coverage afterwards, not the
-generator. It was written with the same mindset that produced the 22, so mining
-it first would reproduce the same blind spots at greater length.
+1. **Covered** by an engine — record the tool and rule id; the coverage test
+   holds it.
+2. **Judgment tier** — objective, but not expressible as a pattern. Expect most
+   of the real content here. It is also where there is no incumbent.
+3. **Human** — a review question, not a check.
+4. **Not a rule** — background knowledge. A real category, not a failure.
+
+Classification is checkable work rather than opinion: engine registries are
+enumerable and searchable, so "nothing covers this" is a conclusion you can
+demonstrate rather than assume.
+
+What survives from "start small" is the warning not to write rules before the
+machine works. Classifying is not authoring, and the classifying pass is cheap.
 
 ### The calibration target lives in a separate repo
 
@@ -466,7 +484,7 @@ back `not-applicable` while an actual route handler is still judged.
 Work on the two together: a rule change is not finished until it has been run
 against both the fixtures and the app.
 
-### Start small, then bulk-load the rules
+### Start small: build the machine before enumerating anything
 
 Enumerating all rules first produces hundreds of unenforceable ones and leaves
 the hard part (routing, caching, noise control, adoption) untouched. Build the
@@ -480,11 +498,12 @@ hand-written patterns would be transcription rather than leverage. And the 22
 rules it produced turned out to be a test set rather than a corpus, which
 removed the last reason to start from a list.
 
-The bulk-load is therefore not the plan any more. Run the engines, then write
-entries for the gap; the prose is what you audit coverage against afterwards.
-See "The 22 rules are a test set, not a spec" and "Derive the corpus from the
-gap, not from a list". What survives here is the first half, which was always the
-real point: build the machine end to end before enumerating anything.
+The bulk-load is therefore not the plan any more — but the prose is not demoted
+either. It is the statement of intent, and it gets classified concept by concept
+rather than transcribed wholesale. See "The 22 rules are a test set, not a spec"
+and "Two derivations, because only one of them can find an absence". What
+survives here is the first half, which was always the real point: build the
+machine end to end before enumerating anything.
 
 ---
 
@@ -665,19 +684,31 @@ What is left:
 - **Versioning the rules corpus separately** from the tool, so rules can be
   updated without shipping a new binary, and a repo can pin them.
 
-### 7. Build the real corpus, gap-first
+### 7. Classify the prose, then build the corpus from what is uncovered
 
-Rescoped twice. It began as "bulk-load the rules corpus"; delegation made most of
-that somebody else's job; and the 22 turning out to be a test set removed the
-last reason to start from a list at all.
+Rescoped twice, and the second rescope overshot. It began as "bulk-load the rules
+corpus"; delegation made much of that somebody else's job; then gap-first briefly
+demoted the prose to an afterthought, which would have left us structurally
+unable to notice the concepts no engine has an opinion about.
 
-So: run the engines first, see what they already catch, and write entries only
-for the gap — judgment-tier rules, house convention, escaped defects. The prose
-in `~/code/full-stack-swe` is what you audit coverage against afterwards, not
-what you generate from. See "Derive the corpus from the gap, not from a list".
+The deliverable is a coverage pass over `~/code/full-stack-swe`: every concept
+classified as covered by an engine (with tool and rule id), judgment tier, human,
+or not a rule. Expect most of the real content to land in the judgment tier, and
+expect a meaningful fraction to be background knowledge rather than a checkable
+rule — that is a legitimate outcome, not a failure of the pass.
 
-The measured holes below still describe where the corpus is thin, but the answer
-to most of them is now "enable a ruleset", not "write a pattern".
+Run it after Phase 0, so "covered" can be verified rather than asserted and the
+coverage test can hold every claim it makes. See "Two derivations, because only
+one of them can find an absence".
+
+The other two sources of rules stay live alongside it: house-specific convention
+that no public ruleset can know, and escaped defects — when a real bug ships, ask
+which rule should have caught it. That last one is the only source grounded in
+something that actually went wrong.
+
+The measured holes below still describe where the corpus is thin. The answer to
+some is now "enable a ruleset"; the answer to the rest is a judgment-tier rule
+that nothing off the shelf provides.
 
 Where the holes are, measured rather than guessed. Of 22 rules: nine come from
 the auth and security chapter, three each from frontend, data and testing, two
