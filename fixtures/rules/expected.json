@@ -22,6 +22,7 @@
     "api/validated.ts",
     "web/session.test.ts",
     "data/repositories/queries-safe.ts",
-    "security/auth-safe.ts"
+    "security/auth-safe.ts",
+    "api/db/client.ts"
   ]
 }

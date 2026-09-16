@@ -16,6 +16,11 @@ rules:
         - "**/repositories/**"
         - "**/repository/**"
         - "**/migrations/**"
+        # The module that constructs the pool is the database client, not a
+        # consumer of it, and every project has one. Kept to the conventional
+        # filenames so that query logic in, say, db/queries.ts is still caught.
+        - "**/db/{client,index,pool}.{ts,js}"
+        - "**/database/{client,index,pool}.{ts,js}"
         - "**/*.{test,spec}.{ts,tsx}"
     enforcement:
       kind: pattern
