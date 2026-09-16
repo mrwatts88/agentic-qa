@@ -7,7 +7,7 @@ import type { QaConfig } from "./config.js";
  * with a lower version is re-judged, because a verdict is only meaningful
  * relative to the prompt that produced it.
  */
-export const JUDGE_VERSION = 3;
+export const JUDGE_VERSION = 4;
 
 /** Same idea, for mutation proposals. */
 export const MUTATION_VERSION = 1;
@@ -48,7 +48,11 @@ Decide in that order, and check "unverifiable" first. Ask whether the descriptio
 
 Read the description on its own. Do not work out what it must have meant from the test body, the file name, or the function it calls. The whole point of these descriptions is that a reader can learn what the suite covers without opening the tests, so a description that only makes sense once you have read the body has already failed, and the verdict is "unverifiable". "works correctly", "handles it properly" and "does the right thing" are unverifiable no matter what the body does.
 
-Judge only the relationship between the description and the assertions. Do not comment on naming, style, formatting, or behaviors the description does not claim. Name the specific assertion that carries the weight, or the specific gap that lets a broken implementation pass.`;
+Judge only the relationship between the description and the assertions. Do not comment on naming, style, formatting, or behaviors the description does not claim. Name the specific assertion that carries the weight, or the specific gap that lets a broken implementation pass.
+
+You are also given the helpers and setup the test relies on. Read them before judging: a body that calls a builder or a factory is doing whatever that helper does, and the state a setup hook establishes is part of this test's arrangement. Do not report a test as weak because something it depends on is defined elsewhere in the file.
+
+Judge this test on its own behaviour, not on the suite around it. A test that covers one case is not weak merely because a different case would need a different test.`;
 
 const CONTRACT_SCHEMA = {
   type: "object",
@@ -188,6 +192,15 @@ export async function judgeContract(
     "```ts",
     test.body,
     "```",
+    ...(test.context
+      ? [
+          "",
+          "Helpers and setup this test relies on, from the same file:",
+          "```ts",
+          test.context,
+          "```",
+        ]
+      : []),
   ].join("\n");
 
   const { output, costUsd, durationMs } = await invoke(

@@ -22,6 +22,15 @@ export interface ExtractedTest {
   description: string;
   descriptionSource: "title" | "docblock";
   body: string;
+  /**
+   * Module-scope helpers and setup hooks the body relies on.
+   *
+   * Without this the judge sees `needsJudging(t, ledgerFor(t), "sonnet")` and
+   * cannot tell what `ledgerFor` established, so it reports a perfectly good
+   * test as weak. Fixtures never caught this because their bodies were
+   * self-contained; real test files are not.
+   */
+  context: string;
   line: number;
 }
 

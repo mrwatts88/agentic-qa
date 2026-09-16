@@ -100,6 +100,24 @@ irrelevant code will eventually answer violated. The third verdict is what keeps
 the tier quiet enough to be worth reading, and the fixture corpus asserts it
 explicitly rather than leaving it to chance.
 
+### A test body means nothing without its helpers
+
+Judging a test body alone produces false positives on any real suite. The judge
+sees `needsJudging(t, ledgerFor(t), "sonnet")` and cannot tell what `ledgerFor`
+established, so it reports a good test as weak. Module-scope helpers and setup
+hooks are therefore sent with every test, and they feed the body hash, so
+editing a shared builder re-judges the tests that depend on it.
+
+Fixtures could never have caught this: their bodies were written self-contained.
+It took running against real code, where **ten of thirteen findings turned out
+to be this one defect**. The lesson generalises: a corpus written to have known
+answers proves the machinery works and says nothing about behaviour on code that
+was not built to be a test case.
+
+The remaining limit is that context stops at the file boundary. A test whose
+discriminating power depends on an imported value the judge cannot see may still
+be reported as weak. That is usually a fair complaint about the test.
+
 ### A judgment is not evidence until an experiment says so
 
 `agentic-qa mutate` breaks the implementation on purpose and checks the test
@@ -158,7 +176,8 @@ topics).
 - The test-contract checker end to end: extraction (including `@describes`
   docblocks and nested describe blocks), hash-based invalidation, the judge, the
   committed ledger, and the CLI. Scores 5/5 on `fixtures/sample` with no false
-  positives or negatives, at about a cent per judgment.
+  positives or negatives. Roughly two cents per judgment on real test files, and
+  nothing at all for tests that have not changed.
 - Judge scoring (`agentic-qa eval`), reporting the two error directions
   separately.
 - Mutation grounding (`agentic-qa mutate`), verified on `fixtures/runnable`,

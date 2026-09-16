@@ -59,14 +59,24 @@ describe("extractTests", () => {
   it("joins a multi-line docblock into one line and strips the comment markers", () => {
     const documented = sampleTests.find((t) => t.title === "refuses to stack");
 
-    expect(documented?.description).not.toContain("*");
-    expect(documented?.description).not.toContain("\n");
+    expect(documented?.description).toBe(
+      "Stacking two coupons is refused: the second call leaves the cart total exactly as the first coupon left it, and reports STACKING.",
+    );
   });
 
   it("reports the line each test starts on", () => {
-    for (const test of sampleTests) {
-      expect(test.line).toBeGreaterThan(0);
-    }
+    const first = sampleTests.find((t) => t.title === "rejects an expired coupon");
+    const later = sampleTests.find((t) => t.title === "does not create an order");
+
+    expect(first?.line).toBe(11);
+    expect(later?.line).toBe(53);
+  });
+
+  it("collects the helpers and imports a test body depends on", () => {
+    const any = sampleTests[0];
+
+    expect(any.context).toContain("import");
+    expect(any.context).not.toContain("rejects an expired coupon");
   });
 });
 
@@ -81,6 +91,8 @@ describe("extractRelativeImports", () => {
   it("ignores package imports so only first-party code is offered for mutation", () => {
     const imports = extractRelativeImports(runnable);
 
+    expect(imports.every((p) => p.includes("/fixtures/runnable/"))).toBe(true);
+    expect(imports.some((p) => p.includes("node_modules"))).toBe(false);
     expect(imports.some((p) => p.includes("vitest"))).toBe(false);
   });
 });

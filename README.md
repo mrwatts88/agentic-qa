@@ -276,7 +276,11 @@ servers, CLAUDE.md, skills, plugins) on every single call:
 | `--safe-mode` | $0.012 |
 | `--safe-mode` on haiku | $0.008 |
 
-About a cent per test, and only for tests that actually changed.
+That measurement is a single small judgment. On real test files it runs closer
+to two cents each, because an actual test body and the helpers it depends on are
+far larger than a fixture one-liner. Checking this tool's own suite of 50 tests
+from cold costs roughly a dollar. You only pay for tests that changed, so in
+day-to-day use almost every run is free.
 
 ## Checking the checker
 

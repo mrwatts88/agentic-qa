@@ -30,6 +30,7 @@ Options:
   --model <name>      override judge model (haiku | sonnet | opus)
   --concurrency N     parallel judge processes
   --json              machine-readable output
+  --file <path>       restrict to a single file, for cheap iteration
   --expected <path>   expectations file for eval (default: expected.json)
   -h, --help
 `;
@@ -53,6 +54,7 @@ async function main(): Promise<number> {
       concurrency: { type: "string" },
       expected: { type: "string" },
       llm: { type: "boolean", default: false },
+      file: { type: "string" },
       help: { type: "boolean", short: "h", default: false },
     },
   });
@@ -159,10 +161,16 @@ async function main(): Promise<number> {
     return summary.refuted > 0 ? 1 : 0;
   }
 
+  const only = values.file
+    ? [values.file]
+    : values.staged
+      ? stagedFiles(cwd)
+      : undefined;
+
   const summary = await checkContracts(config, {
     cwd,
     all: values.all,
-    only: values.staged ? stagedFiles(cwd) : undefined,
+    only,
     json: values.json,
   });
 

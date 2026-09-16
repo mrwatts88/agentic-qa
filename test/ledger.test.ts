@@ -17,6 +17,7 @@ function test(overrides: Partial<ExtractedTest> = {}): ExtractedTest {
     description: "does a thing",
     descriptionSource: "title",
     body: "expect(result.ok).toBe(true);",
+    context: "import { applyCoupon } from './cart';",
     line: 1,
     ...overrides,
   };
@@ -46,6 +47,28 @@ describe("hashing", () => {
     const reformatted = test({ body: "  expect(a).toBe(1);\n\n" });
 
     expect(bodyHash(original)).toBe(bodyHash(reformatted));
+  });
+
+  /**
+   * Regression. Joining the body and its context before normalising turned
+   * trailing whitespace into interior whitespace, which survived the trim, so
+   * reformatting a test silently forced a re-judge.
+   */
+  it("ignores whitespace around the supporting context as well as the body", () => {
+    const original = test({ body: "expect(a).toBe(1);", context: "const x = 1;" });
+    const reformatted = test({
+      body: "expect(a).toBe(1);\n\n",
+      context: "\n  const x = 1;  \n",
+    });
+
+    expect(bodyHash(original)).toBe(bodyHash(reformatted));
+  });
+
+  it("changes when a helper the test depends on changes", () => {
+    const original = test({ context: "const rate = 0.1;" });
+    const changed = test({ context: "const rate = 0.2;" });
+
+    expect(bodyHash(original)).not.toBe(bodyHash(changed));
   });
 
   it("changes when the meaning of the body changes", () => {

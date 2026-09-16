@@ -55,6 +55,9 @@ describe("loadConfig", () => {
   it("accepts the .yml spelling of the config file", () => {
     writeFileSync(join(dir, "qa.config.yml"), "failOnUnverifiable: true\n");
 
+    // Pinned here so the assertion below is self-evidently discriminating:
+    // true can only have come from the file, never from the fallback.
+    expect(DEFAULT_CONFIG.failOnUnverifiable).toBe(false);
     expect(loadConfig(dir).failOnUnverifiable).toBe(true);
   });
 });

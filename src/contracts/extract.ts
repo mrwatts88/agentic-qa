@@ -5,6 +5,10 @@ import type { ExtractedTest } from "../types.js";
 
 const TEST_FNS = new Set(["it", "test"]);
 const SUITE_FNS = new Set(["describe", "suite"]);
+const HOOK_FNS = new Set(["beforeEach", "afterEach", "beforeAll", "afterAll"]);
+
+/** Keeps a pathological test file from producing an enormous prompt. */
+const MAX_CONTEXT_CHARS = 4000;
 
 /** `it.each(...)` / `describe.only` etc: take the leftmost identifier. */
 function leftmostName(expr: ts.Expression): string | undefined {
@@ -57,6 +61,47 @@ function docblockDescription(
   return undefined;
 }
 
+/**
+ * Everything in the file that is not itself a test: imports, builders, factory
+ * helpers, and setup hooks. A test body means little without the helpers it
+ * calls, and judging it alone manufactures false positives.
+ */
+function collectContext(source: ts.SourceFile): string {
+  const parts: string[] = [];
+
+  for (const statement of source.statements) {
+    if (
+      ts.isExpressionStatement(statement) &&
+      ts.isCallExpression(statement.expression)
+    ) {
+      const name = leftmostName(statement.expression.expression);
+      // Suites and tests are handled separately; hooks are collected below at
+      // whatever depth they appear, so skip them here to avoid duplicates.
+      if (name && (SUITE_FNS.has(name) || TEST_FNS.has(name) || HOOK_FNS.has(name))) {
+        continue;
+      }
+    }
+    parts.push(statement.getText(source));
+  }
+
+  const visitForHooks = (node: ts.Node): void => {
+    if (ts.isCallExpression(node)) {
+      const name = leftmostName(node.expression);
+      if (name && HOOK_FNS.has(name)) {
+        parts.push(node.getText(source));
+        return;
+      }
+    }
+    ts.forEachChild(node, visitForHooks);
+  };
+  ts.forEachChild(source, visitForHooks);
+
+  const joined = parts.join("\n\n");
+  return joined.length > MAX_CONTEXT_CHARS
+    ? `${joined.slice(0, MAX_CONTEXT_CHARS)}\n// ... context truncated`
+    : joined;
+}
+
 function scriptKind(file: string): ts.ScriptKind {
   if (file.endsWith(".tsx")) return ts.ScriptKind.TSX;
   if (file.endsWith(".jsx")) return ts.ScriptKind.JSX;
@@ -78,6 +123,7 @@ export function extractTests(
 
   const found: ExtractedTest[] = [];
   const suiteStack: string[] = [];
+  const context = collectContext(source);
 
   const visit = (node: ts.Node): void => {
     if (ts.isCallExpression(node)) {
@@ -114,6 +160,7 @@ export function extractTests(
             description: docblock ?? title,
             descriptionSource: docblock ? "docblock" : "title",
             body,
+            context,
             line: line + 1,
           });
           return;

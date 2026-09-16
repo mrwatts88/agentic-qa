@@ -38,21 +38,37 @@ afterEach(() => {
 });
 
 describe("the bundled rule corpus", () => {
-  it("loads without any rule failing validation", () => {
-    expect(loadRules().length).toBeGreaterThan(0);
+  it("loads every bundled pack", () => {
+    const packs = new Set(loadRules().map((r) => r.pack));
+
+    expect([...packs].sort()).toEqual([
+      "backend",
+      "frontend",
+      "security",
+      "testing",
+    ]);
   });
 
   it("gives every rule an enforcement its tier can actually run", () => {
-    for (const r of loadRules()) {
-      if (r.tier === "mechanical") expect(r.enforcement.kind).toBe("pattern");
-      if (r.tier === "llm") expect(r.enforcement.kind).toBe("llm");
-    }
+    const rules = loadRules();
+    const mechanical = rules.filter((r) => r.tier === "mechanical");
+    const llm = rules.filter((r) => r.tier === "llm");
+
+    expect(mechanical.length).toBeGreaterThan(0);
+    expect(llm.length).toBeGreaterThan(0);
+    expect(mechanical.every((r) => r.enforcement.kind === "pattern")).toBe(true);
+    expect(llm.every((r) => r.enforcement.kind === "llm")).toBe(true);
+    // No rule may carry a tier the runner does not know how to execute.
+    expect(mechanical.length + llm.length).toBe(rules.length);
   });
 
   it("filters to the requested packs and leaves the rest out", () => {
+    const all = loadRules();
     const only = loadRules([], ["testing"]);
 
     expect(only.length).toBeGreaterThan(0);
+    // Something was actually excluded, so a no-op filter would fail here.
+    expect(only.length).toBeLessThan(all.length);
     expect(only.every((r) => r.pack === "testing")).toBe(true);
   });
 
@@ -71,7 +87,7 @@ describe("routing", () => {
     expect(ruleAppliesTo(rule(), "api/handlers.ts")).toBe(true);
   });
 
-  it("does not apply a rule to a file outside its trigger glob", () => {
+  it("does not apply a rule triggered on **/*.ts to a .tf file", () => {
     expect(ruleAppliesTo(rule(), "infra/main.tf")).toBe(false);
   });
 
@@ -109,6 +125,7 @@ describe("the mechanical runner", () => {
     const [finding] = runMechanical(dir, ["a.ts"], [rule()]);
 
     expect(finding.ruleId).toBe("test.rule");
+    expect(finding.file).toBe("a.ts");
     expect(finding.line).toBe(2);
     expect(finding.excerpt).toContain("forbidden");
   });

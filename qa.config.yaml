@@ -1,0 +1,31 @@
+# agentic-qa checking itself.
+#
+# The tool's own test suite is the first real corpus it runs against. Every
+# other result so far comes from fixtures written to have known answers, which
+# proves the machinery works but says nothing about how it behaves on code that
+# was not built to be a test case.
+#
+# fixtures/ is excluded deliberately: those suites are broken on purpose and
+# judging them as if they were ours would be meaningless noise.
+
+testGlobs:
+  - "test/**/*.test.ts"
+
+ignore:
+  - "**/node_modules/**"
+  - "**/dist/**"
+  - "**/.qa/**"
+  - "fixtures/**"
+
+judge:
+  model: haiku
+  concurrency: 4
+  maxBudgetUsd: 0.5
+
+# Left off while the suite is being brought up to standard. Turning it on is
+# the ratchet: once every description is falsifiable, it should stay that way.
+failOnUnverifiable: false
+
+rules:
+  llm:
+    maxFileBytes: 60000
