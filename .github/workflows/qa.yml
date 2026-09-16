@@ -13,6 +13,12 @@ jobs:
   check:
     runs-on: ubuntu-latest
 
+    # Declared at job level on purpose. A step's own `env` is not in scope when
+    # its `if` is evaluated, so gating on it there would leave the judgment
+    # steps permanently skipped while looking perfectly correct.
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
     steps:
       - uses: actions/checkout@v4
         with:
@@ -43,12 +49,8 @@ jobs:
       # request still gets the free tier.
       - name: Rules, judgment tier
         if: ${{ env.ANTHROPIC_API_KEY != '' }}
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: node dist/cli.js rules --llm
 
       - name: Test contracts
         if: ${{ env.ANTHROPIC_API_KEY != '' }}
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: node dist/cli.js contracts
