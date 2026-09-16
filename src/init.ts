@@ -14,6 +14,8 @@ import { dirname, join, resolve } from "node:path";
  */
 export interface InitResult {
   written: string[];
+  /** Files that existed and were replaced, which only --force does. */
+  replaced: string[];
   /** Files that existed and gained something they did not have before. */
   updated: string[];
   skipped: { path: string; why: string }[];
@@ -23,6 +25,13 @@ export interface InitResult {
 export interface InitOptions {
   gitHook: boolean;
   claudeHook: boolean;
+  /**
+   * Replace files this tool owns instead of leaving them alone. The escape
+   * hatch for the case that motivated it: a repo set up by an older version,
+   * where the call sites have since gained a hook it never wrote. It does not
+   * extend to a `prepare` script, which belongs to whoever wrote it.
+   */
+  force: boolean;
 }
 
 /**
@@ -114,18 +123,27 @@ function put(
   relative: string,
   contents: string,
   result: InitResult,
-  executable = false,
+  options: { force: boolean; executable?: boolean; skipReason?: string },
 ): void {
   const path = resolve(cwd, relative);
-  if (existsSync(path)) {
-    result.skipped.push({ path: relative, why: "already exists, left alone" });
+  const exists = existsSync(path);
+
+  if (exists && !options.force) {
+    result.skipped.push({
+      path: relative,
+      // Only files --force can actually replace may advertise it. Telling
+      // someone to re-run with a flag that will not touch this file — worse,
+      // telling them so in the output of the run where they just passed it —
+      // is noise that trains people to ignore the report.
+      why: options.skipReason ?? "already exists, left alone — pass --force to replace it",
+    });
     return;
   }
 
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, contents);
-  if (executable) chmodSync(path, 0o755);
-  result.written.push(relative);
+  if (options.executable) chmodSync(path, 0o755);
+  (exists ? result.replaced : result.written).push(relative);
 }
 
 export interface InstallHooksResult {
@@ -192,8 +210,16 @@ function wirePrepare(cwd: string, runner: string, result: InitResult): void {
  * Installs the commit gate: the tracked hook, the prepare script that activates
  * it on install, and the git config for whoever ran this.
  */
-function installGitHook(cwd: string, runner: string, result: InitResult): void {
-  put(cwd, join(HOOKS_DIR, "pre-commit"), preCommit(runner), result, true);
+function installGitHook(
+  cwd: string,
+  runner: string,
+  result: InitResult,
+  force: boolean,
+): void {
+  put(cwd, join(HOOKS_DIR, "pre-commit"), preCommit(runner), result, {
+    force,
+    executable: true,
+  });
   wirePrepare(cwd, runner, result);
 
   // The person running init should not have to install to get their own hook.
@@ -216,18 +242,30 @@ function installGitHook(cwd: string, runner: string, result: InitResult): void {
 }
 
 export function runInit(cwd: string, runner: string, options: InitOptions): InitResult {
-  const result: InitResult = { written: [], updated: [], skipped: [] };
+  const result: InitResult = { written: [], replaced: [], updated: [], skipped: [] };
 
   // The config is the tool's own file, and the command line is what every repo
   // gets. The call sites that touch anything else are opt-in.
-  put(cwd, "qa.config.yaml", QA_CONFIG, result);
+  //
+  // Never force-replaced, deliberately. This file is seeded once and then
+  // belongs to the repo: its globs, its ignore list, its budget. The hook
+  // wiring below is generated boilerplate that the tool owns and that an older
+  // version may have written incompletely, which is the whole reason --force
+  // exists. Replacing someone's tuned config to pick up a new hook would be a
+  // trade nobody asked for.
+  put(cwd, "qa.config.yaml", QA_CONFIG, result, {
+    force: false,
+    skipReason: "already exists — yours to edit, never replaced",
+  });
 
   if (options.claudeHook) {
-    put(cwd, join(".claude", "settings.json"), claudeSettings(runner), result);
+    put(cwd, join(".claude", "settings.json"), claudeSettings(runner), result, {
+      force: options.force,
+    });
   }
 
   if (options.gitHook) {
-    installGitHook(cwd, runner, result);
+    installGitHook(cwd, runner, result, options.force);
   }
 
   return result;

@@ -147,8 +147,17 @@ grounding needs.
   apply. Handing a path straight to the checker is how staging a build artifact
   or a deliberately-broken fixture ends up failing your own pre-commit hook.
   Note that a unit test of `selectFiles` does not prove a call site uses it.
-- **`init` never overwrites an existing file.** An existing pre-commit hook or
-  settings file belongs to whoever wrote it. Report it and leave it alone.
+- **`init` never overwrites an existing file unless `--force` says so.** An
+  existing pre-commit hook or settings file belongs to whoever wrote it, so the
+  default reports it and leaves it alone — but silently, that leaves a repo set
+  up by an older version missing call sites added since, while looking perfectly
+  installed. So a skip names `--force`, and the summary says how many files were
+  left alone.
+- **`--force` replaces the wiring this tool generates, and nothing else.**
+  `qa.config.yaml` is never replaced: it is seeded once and then belongs to the
+  repo, with its own globs, ignore list and budget. Neither is a `prepare`
+  script someone else wrote. Overwriting either to pick up a new hook is a trade
+  nobody asked for.
 - **`init` installs nothing that was not asked for.** Each call site is a flag
   (`--git-hook`, `--claude-hook`); bare `init` writes only `qa.config.yaml` and
   reports what it left out. A setup command that rewrites someone's git config

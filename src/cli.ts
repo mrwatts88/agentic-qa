@@ -32,7 +32,8 @@ Usage:
 
 Options:
   --git-hook          (init) commit gate: tracked hooks/pre-commit + prepare script
-  --claude-hook       (init) Claude Code PostToolUse hook in .claude/settings.json
+  --claude-hook       (init) Claude Code PostToolUse and Stop hooks in .claude/settings.json
+  --force             (init) replace existing hook wiring; never touches qa.config.yaml
   --all               re-judge every contract, ignoring the cached ledger
   --staged            only tests in files staged in git
   --model <name>      override judge model (haiku | sonnet | opus)
@@ -61,6 +62,7 @@ async function main(): Promise<number> {
       "git-hook": { type: "boolean", default: false },
       "claude-hook": { type: "boolean", default: false },
       mechanical: { type: "boolean", default: false },
+      force: { type: "boolean", default: false },
       json: { type: "boolean", default: false },
       model: { type: "string" },
       concurrency: { type: "string" },
@@ -112,16 +114,33 @@ async function main(): Promise<number> {
     const runner = values.runner ?? "npx agentic-qa";
     const gitHook = values["git-hook"];
     const claudeHook = values["claude-hook"];
-    const result = runInit(cwd, runner, { gitHook, claudeHook });
+    const result = runInit(cwd, runner, { gitHook, claudeHook, force: values.force });
 
     for (const path of result.written) {
       process.stdout.write(`${pc.green("wrote")}   ${path}\n`);
+    }
+    for (const path of result.replaced) {
+      process.stdout.write(`${pc.green("replaced")} ${path}\n`);
     }
     for (const path of result.updated) {
       process.stdout.write(`${pc.green("set")}     ${path}\n`);
     }
     for (const skip of result.skipped) {
       process.stdout.write(`${pc.yellow("skipped")} ${skip.path} ${pc.dim(`(${skip.why})`)}\n`);
+    }
+
+    // Leaving a file alone is the safe default, but it is silent about being
+    // out of date: a repo set up by an older version keeps its old hook wiring
+    // and looks perfectly installed. Say so.
+    const stale = result.skipped.filter((s) => s.why.includes("--force"));
+    if (stale.length) {
+      process.stdout.write(
+        pc.yellow(
+          `\n${stale.length} existing file(s) left alone, so this repo may be missing\n` +
+            "call sites added since it was set up. Re-run with --force to replace\n" +
+            "them. qa.config.yaml is never replaced.\n",
+        ),
+      );
     }
 
     if (gitHook) {

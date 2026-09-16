@@ -22,7 +22,12 @@ call site is a flag:
 | flag | installs |
 | --- | --- |
 | `--git-hook` | a tracked `hooks/pre-commit`, plus the `prepare` script that activates it |
-| `--claude-hook` | a `PostToolUse` hook in `.claude/settings.json` |
+| `--claude-hook` | `PostToolUse` and `Stop` hooks in `.claude/settings.json` |
+
+Already set up by an older version? `init --force` replaces the hook wiring so
+you pick up call sites added since. It never replaces `qa.config.yaml` or a
+`prepare` script you wrote — those are yours. Without `--force`, anything that
+already exists is left alone and reported, so you can see what you are missing.
 
 Bare `init` leaves your git config and your agent settings alone and tells you
 what it did not install. Either way it never overwrites a file that exists.

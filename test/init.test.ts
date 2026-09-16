@@ -17,9 +17,11 @@ let dir: string;
 let ci: string | undefined;
 
 /** Both call sites, as the documented quick start asks for them. */
-const BOTH: InitOptions = { gitHook: true, claudeHook: true };
+const BOTH: InitOptions = { gitHook: true, claudeHook: true, force: false };
 /** Bare `init`: the command line, and nothing that touches anything else. */
-const NEITHER: InitOptions = { gitHook: false, claudeHook: false };
+const NEITHER: InitOptions = { gitHook: false, claudeHook: false, force: false };
+/** Bringing a repo set up by an older version back up to date. */
+const FORCE: InitOptions = { gitHook: true, claudeHook: true, force: true };
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "agentic-qa-init-"));
@@ -220,6 +222,90 @@ describe("init", () => {
     const skip = result.skipped.find((s) => s.path === ".git/hooks/pre-commit");
 
     expect(skip?.why).toContain("inert");
+  });
+
+  /**
+   * The case this exists for: a repo set up before the Stop hook existed keeps
+   * its old settings file, looks perfectly installed, and silently lacks a call
+   * site. Leaving it alone is right by default and wrong forever.
+   */
+  it("replaces stale hook wiring when forced", () => {
+    mkdirSync(join(dir, ".claude"), { recursive: true });
+    writeFileSync(join(dir, ".claude/settings.json"), '{"hooks":{}}\n');
+
+    const result = runInit(dir, "npx agentic-qa", FORCE);
+    const settings = JSON.parse(
+      readFileSync(join(dir, ".claude/settings.json"), "utf8"),
+    );
+
+    expect(result.replaced).toContain(join(".claude", "settings.json"));
+    expect(settings.hooks.Stop[0].hooks[0].command).toBe("npx agentic-qa stop");
+  });
+
+  /**
+   * The config is seeded once and then belongs to the repo — its globs, its
+   * ignore list, its budget. Replacing that to pick up a new hook would be a
+   * trade nobody asked for.
+   */
+  it("never replaces qa.config.yaml, even when forced", () => {
+    writeFileSync(join(dir, "qa.config.yaml"), "testGlobs:\n  - \"mine/**\"\n");
+
+    const result = runInit(dir, "npx agentic-qa", FORCE);
+
+    expect(readFileSync(join(dir, "qa.config.yaml"), "utf8")).toContain("mine/**");
+    expect(result.replaced).not.toContain("qa.config.yaml");
+  });
+
+  /**
+   * It did exactly this on a real repo: reported the config as skipped, told
+   * the reader to re-run with --force, and printed that in the output of the
+   * run where they had just passed --force. Advertising a flag that cannot
+   * touch the file is how a report teaches people to stop reading it.
+   */
+  it("does not offer --force for the one file --force will never replace", () => {
+    writeFileSync(join(dir, "qa.config.yaml"), 'testGlobs:\n  - "mine/**"\n');
+
+    const result = runInit(dir, "npx agentic-qa", FORCE);
+    const skip = result.skipped.find((s) => s.path === "qa.config.yaml");
+
+    expect(skip?.why).not.toContain("--force");
+  });
+
+  /** --force owns the tool's own boilerplate, not a script someone wrote. */
+  it("leaves an existing prepare script alone even when forced", () => {
+    pkg({ name: "demo", scripts: { prepare: "npm run build" } });
+
+    runInit(dir, "npx agentic-qa", FORCE);
+    const written = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
+
+    expect(written.scripts.prepare).toBe("npm run build");
+  });
+
+  /** Silence about being out of date is the failure mode --force answers. */
+  it("points at --force when it leaves something alone", () => {
+    mkdirSync(join(dir, ".claude"), { recursive: true });
+    writeFileSync(join(dir, ".claude/settings.json"), '{"mine":true}\n');
+
+    const result = runInit(dir, "npx agentic-qa", BOTH);
+    const skip = result.skipped.find(
+      (s) => s.path === join(".claude", "settings.json"),
+    );
+
+    expect(result.replaced).toEqual([]);
+    expect(skip?.why).toContain("--force");
+  });
+
+  it("installs the Stop hook without the mechanical-only flag", () => {
+    runInit(dir, "npx agentic-qa", BOTH);
+    const settings = JSON.parse(
+      readFileSync(join(dir, ".claude/settings.json"), "utf8"),
+    );
+
+    const stop = settings.hooks.Stop[0];
+    // Stop fires once per turn for the main agent, so it is the one call site
+    // where the tiers that cost money belong.
+    expect(stop.hooks[0].command).toBe("npx agentic-qa stop");
+    expect(stop.matcher).toBeUndefined();
   });
 
   it("uses the runner it was given, so a repo can point at a local build", () => {
