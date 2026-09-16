@@ -35,6 +35,8 @@ grounding needs.
 - `src/contracts/check.ts` — orchestration and reporting.
 - `src/contracts/mutate.ts` — mutation grounding.
 - `src/contracts/evaluate.ts` — scores the judge against known answers.
+- `test/` — unit tests for the deterministic parts. Anything that talks to a
+  model is covered by the fixture corpora instead.
 
 ## Invariants
 

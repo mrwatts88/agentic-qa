@@ -125,6 +125,11 @@ into structured rules is an afternoon of work once the machine exists.
 - Mutation grounding (`agentic-qa mutate`), verified on `fixtures/runnable`,
   where two tests that both pass are correctly separated into one real and one
   worthless by breaking the implementation.
+- Unit tests for this tool's own deterministic parts, in `test/`: extraction
+  (including a regression for the docblock bug), hashing and cache
+  invalidation, ledger pruning, config merging, and eval scoring. The judge and
+  the mutator are the non-deterministic pieces and are covered by the two
+  fixture corpora instead.
 
 ---
 
@@ -188,15 +193,7 @@ and `.qa/`. If rules live in the repo, there are N copies to maintain.
 - Both depend on the same rules package, so updating rules centrally updates
   every repo.
 
-### 4. Tests for this tool itself
-
-There are currently none, which is not a defensible position for a QA tool. The
-deterministic parts (extraction, hashing, invalidation, ledger pruning, eval
-scoring, mutation application and restore) are all straightforwardly
-unit-testable. The judge is the only non-deterministic piece and is covered by
-the fixture corpora instead.
-
-### 5. Mutation grounding, second pass
+### 4. Mutation grounding, second pass
 
 Working, but narrow. Currently assumes vitest and finds the implementation by
 following the test file's relative imports. Worth extending to other runners and
