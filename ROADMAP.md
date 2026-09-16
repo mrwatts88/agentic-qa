@@ -401,6 +401,50 @@ Full coverage immediately, curated gating from day one, and a promotion path —
 tool rule that proves itself gets a corpus entry and starts blocking. That is the
 baseline ratchet, arriving as a side effect.
 
+### The 22 rules are a test set, not a spec
+
+They were derived from the prose in `~/code/full-stack-swe` to have something
+concrete to build the machine against, and they were never audited as a corpus
+anybody would want. Treating them as the product is a mistake in both
+directions: it overstates what is covered, and it makes retiring them feel like
+a loss.
+
+What they are genuinely good for is test data. Each has a violating fixture and
+a clean control, which is precisely what verifying an adapter needs. Keep them
+in that role and delete them from the corpus freely.
+
+The durable thing they produced was the discipline — a rule must name its
+enforcement, and must have a clean control — not the rules themselves.
+
+This also corrects how engines get chosen. Deriving the required engine set from
+these 22 would be deriving it from a sample of convenience. Engines are chosen
+by the failure surface of the target stack — TypeScript and React, Hono,
+Postgres, Terraform, secrets, dependencies — and the 22 agreeing with that list
+was a sanity check, not the derivation.
+
+### Derive the corpus from the gap, not from a list
+
+Now that the engines find the problems, the corpus is only the promises they do
+not already keep. So the order is inverted from the obvious one: enable the
+engines broadly, run them against real code, see what they already catch, and
+write corpus entries for what is left.
+
+Generating rules by enumeration first is what the "start small" decision warned
+about, and delegation makes it worse: most of what you would write is already
+enforced, so you would be transcribing someone else's ruleset by hand.
+
+The sources for the gap, in priority order:
+
+1. What engines structurally cannot express — the judgment tier.
+2. House-specific convention, which no public ruleset can know.
+3. Escaped defects: when a real bug ships, ask which rule should have caught it.
+   That is the empirical loop, and the only source on this list grounded in
+   something that actually went wrong.
+
+`~/code/full-stack-swe` is a checklist for auditing coverage afterwards, not the
+generator. It was written with the same mindset that produced the 22, so mining
+it first would reproduce the same blind spots at greater length.
+
 ### The calibration target lives in a separate repo
 
 `~/code/orders-admin` is a small CRUD application on the target stack, built
@@ -430,11 +474,17 @@ machine end to end with a small rule set, prove the loop, then bulk-load from
 the prose corpus in `~/code/full-stack-swe` (about 34,000 words across twelve
 topics).
 
-Still true, but the bulk-load is much smaller than it looked. Most of that prose
-describes rules a free tool already enforces, so converting it into hand-written
-patterns would be transcription rather than leverage. Mine it for what no engine
-covers: house-specific convention, and the intent-level rules that belong in the
-judgment tier.
+Still true, and the second half has since been overtaken twice. Most of that
+prose describes rules a free tool already enforces, so converting it into
+hand-written patterns would be transcription rather than leverage. And the 22
+rules it produced turned out to be a test set rather than a corpus, which
+removed the last reason to start from a list.
+
+The bulk-load is therefore not the plan any more. Run the engines, then write
+entries for the gap; the prose is what you audit coverage against afterwards.
+See "The 22 rules are a test set, not a spec" and "Derive the corpus from the
+gap, not from a list". What survives here is the first half, which was always the
+real point: build the machine end to end before enumerating anything.
 
 ---
 
@@ -465,7 +515,9 @@ yet. Everything in this section, by contrast, runs.
   `fixtures/rules`. 14/14 known violations found, 0 false positives across
   seven clean control files.
 - A corpus of 22 rules across frontend, backend, data, testing and security,
-  each with a violating fixture and a clean control.
+  each with a violating fixture and a clean control. A **test set**, derived to
+  have something to build against — not an audited corpus and not a spec. See
+  "The 22 rules are a test set, not a spec".
 - The llm tier (`agentic-qa rules --llm`): the rule judge, per-file and
   per-prompt caching, and scoring against `fixtures/rules-llm`. 19/19 with
   nothing in either error direction, including telling apart violating and
@@ -546,8 +598,13 @@ let network-dependent rules fail open.
 Delete the YAML rules an engine now covers, then re-run both fixture corpora and
 `orders-admin`. This is exactly what `fixtures/rules` was built for: each rule
 already has a violating case and a clean control, so parity is measurable rather
-than asserted. A rule may only be deleted once something else demonstrably
-catches its fixture.
+than asserted.
+
+Retire freely rather than ceremonially. These 22 are a test set, not a spec, so
+a rule whose fixture an engine does not happen to catch is not necessarily worth
+keeping — the question is whether anyone would have written that rule on
+purpose. The fixtures stay either way, as the harness that proves an adapter
+reports correctly.
 
 Terraform follows the same path: tflint and checkov, never hand-written regex.
 
@@ -608,13 +665,19 @@ What is left:
 - **Versioning the rules corpus separately** from the tool, so rules can be
   updated without shipping a new binary, and a repo can pin them.
 
-### 7. Mine the prose for what no engine covers
+### 7. Build the real corpus, gap-first
 
-Rescoped by the delegation turn: this was "bulk-load the rules corpus", and most
-of the corpus is now somebody else's job. What is left is house-specific
-convention and the broad, intent-level rules that only the judgment tier can
-enforce. The measured holes below still describe where the corpus is thin, but
-the answer to most of them is now "enable a ruleset", not "write a pattern".
+Rescoped twice. It began as "bulk-load the rules corpus"; delegation made most of
+that somebody else's job; and the 22 turning out to be a test set removed the
+last reason to start from a list at all.
+
+So: run the engines first, see what they already catch, and write entries only
+for the gap — judgment-tier rules, house convention, escaped defects. The prose
+in `~/code/full-stack-swe` is what you audit coverage against afterwards, not
+what you generate from. See "Derive the corpus from the gap, not from a list".
+
+The measured holes below still describe where the corpus is thin, but the answer
+to most of them is now "enable a ruleset", not "write a pattern".
 
 Where the holes are, measured rather than guessed. Of 22 rules: nine come from
 the auth and security chapter, three each from frontend, data and testing, two
