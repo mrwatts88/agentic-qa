@@ -133,8 +133,22 @@ drift from what the gate enforces.
 - **On commit** — a git hook. Mechanical tier only, so commits stay fast, free
   and offline.
 - **In CI** — everything, including the judgment tiers. The layer nobody can skip
-  with `--no-verify`. See `.github/workflows/qa.yml`; the judgment steps need
-  `ANTHROPIC_API_KEY`, since CI has no Claude Code login.
+  with `--no-verify`.
+
+`init` does not write a CI config, because that file is committed, is different
+for every provider, and costs money on every push. Add these steps to whatever
+you already use:
+
+```yaml
+- run: npx agentic-qa rules         # free, no key needed
+- run: npx agentic-qa rules --llm   # needs ANTHROPIC_API_KEY
+- run: npx agentic-qa contracts     # needs ANTHROPIC_API_KEY
+```
+
+The judgment steps need `ANTHROPIC_API_KEY` as a secret, because `claude -p`
+rides on your local Claude Code login and CI has none. `.github/workflows/qa.yml`
+in this repo is a working example, including skipping those steps when the
+secret is absent so a fork's pull request still gets the free tier.
 
 ## Checking the checker
 

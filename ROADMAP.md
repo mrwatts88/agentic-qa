@@ -309,9 +309,47 @@ it cannot gate a commit; mutation is slow and rewrites source files, so it
 cannot run per edit. Added together they have quietly left the original idea of
 the project the least automated part of it.
 
-Likely shape: `init` also writes a CI workflow running contracts and the
-judgment rules, and mutation gets a deliberate trigger rather than a schedule,
-such as running only on contracts whose verdict changed since the last run.
+**CI, decided.** Do not write a workflow by default. It is provider-specific,
+it is committed, and it spends money on every push, so generating one as a side
+effect of a setup command is the sort of helpfulness this project exists to
+catch. It also cannot finish the job: the judgment tiers need an API key as a
+repository secret, which `init` cannot provision, so there is an unavoidable
+manual step whatever we do.
+
+Instead the README documents the commands, because developers already know how
+to run a command in their own CI, and whether that is GitHub Actions, GitLab or
+anything else is their business. An opt-in `init --ci github` that writes the
+workflow and prints which secret to add is a reasonable convenience later, not
+the default.
+
+What belongs in CI: the mechanical tier again as cheap insurance against
+`--no-verify`, plus `rules --llm` and `contracts`, the two that cannot gate a
+commit because they cost money and need the network. Mutation does not belong on
+every push; it is slow and rewrites source files. Give it a deliberate trigger,
+most likely only the contracts whose verdict changed since the last run.
+
+**Hook distribution, decided.** The pre-commit hook currently lands in
+`.git/hooks/`, which git does not track, so it reaches whoever ran `init` and
+nobody else. The commit gate is therefore per-developer rather than per-repo.
+
+Take the husky approach, which solves this without asking anyone to type a git
+command. Husky keeps its hooks in a committed directory, adds `"prepare":
+"husky"` to package.json, and relies on npm running `prepare` automatically on
+install; their docs are explicit that a developer cloning the repo only needs
+`npm install`. The `core.hooksPath` change happens inside something every
+developer already does.
+
+For us: `init` writes a committed `hooks/pre-commit`, and adds a `prepare`
+script that points `core.hooksPath` at it. Two things to get right, both of
+which husky documents having hit:
+
+- Installing without dev dependencies (`npm ci --omit=dev`) means the tool is
+  not there when `prepare` runs, so the installer must exit quietly rather than
+  fail the install. Same for `CI=true`, where hooks are pointless.
+- Appending to an existing `prepare` script is more invasive than writing a
+  file, and `init` currently never touches anything that already exists. Either
+  append carefully or, more in keeping with the rest of `init`, print the line
+  to add and let the human add it.
 
 ### 2. Adoption on an existing repo: the baseline ratchet
 
