@@ -11,7 +11,8 @@
       "api/reports.ts": "violated",
       "api/reports-safe.ts": "ok",
       "api/orders.ts": "not-applicable",
-      "lib/format.ts": "not-applicable"
+      "lib/format.ts": "not-applicable",
+      "api/reports-ignored.ts": "violated"
     },
     "data.tx.no-read-then-write-race": {
       "api/booking.ts": "violated",

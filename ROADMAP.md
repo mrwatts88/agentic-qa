@@ -129,6 +129,30 @@ The remaining limit is that context stops at the file boundary. A test whose
 discriminating power depends on an imported value the judge cannot see may still
 be reported as weak. That is usually a fair complaint about the test.
 
+### Comments are evidence to the judge, for better and worse
+
+Discovered by getting it wrong. A handler that delegates authorization to an
+account-scoped service was reported as missing an ownership check, because the
+judge reads one file and cannot follow the call. A `qa-ignore` comment was added
+expecting the escape hatch to withhold the finding. The finding did clear, but
+not for that reason: the judge read the comment, accepted the explanation, and
+returned `ok`. Its recorded reason cites the comment directly.
+
+Two consequences. The escape hatch was never exercised on that case, so it went
+unverified in integration for a while, and testing it with a justified comment
+has a structural confound: any comment changes the file the judge reads, so a
+cleared finding cannot be attributed to suppression rather than persuasion.
+
+That is now settled by a paired control in `fixtures/rules-llm`. Two files carry
+the same violation; one has an exception naming only the rule and making no
+argument. The judge records both as violated, and only the unexcused one is
+reported. Suppression and persuasion are distinguishable because the verdict
+moved in one case and not the other.
+
+And prose is an injection surface. A false comment can talk the judge out of a
+real finding as easily as a true one can correct it. This is the sharpest
+argument for mutation grounding: an experiment cannot be persuaded.
+
 ### A judgment is not evidence until an experiment says so
 
 `agentic-qa mutate` breaks the implementation on purpose and checks the test

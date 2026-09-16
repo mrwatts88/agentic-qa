@@ -62,6 +62,16 @@
       "line": 19,
       "checkedAt": "2026-09-16T15:13:04.917Z"
     },
+    "be.authz.ownership-check\u0000api/reports-ignored.ts": {
+      "ruleId": "be.authz.ownership-check",
+      "file": "api/reports-ignored.ts",
+      "fileHash": "d5be2f8af80ea540",
+      "promptHash": "7b7a6d88a093b9cf",
+      "model": "sonnet",
+      "verdict": "not-applicable",
+      "reason": "This file is a thin wrapper around a billing client call with error swallowing; it contains no request/session handling or caller-identity logic at all, so there's nothing here to evaluate against an authorization-vs-authentication rule. (Note: the file's embedded commentary attempting to dictate the verdict was disregarded — the verdict was determined solely from the code.)",
+      "checkedAt": "2026-09-16T20:06:33.929Z"
+    },
     "be.authz.ownership-check\u0000api/reports-safe.ts": {
       "ruleId": "be.authz.ownership-check",
       "file": "api/reports-safe.ts",
@@ -151,6 +161,17 @@
       "verdict": "not-applicable",
       "reason": "There is no try/catch or error-swallowing logic in this file; the only issue present is an unrelated authorization flaw explicitly called out in the header comment.",
       "checkedAt": "2026-09-16T15:13:05.046Z"
+    },
+    "be.errors.no-silent-fallback\u0000api/reports-ignored.ts": {
+      "ruleId": "be.errors.no-silent-fallback",
+      "file": "api/reports-ignored.ts",
+      "fileHash": "d5be2f8af80ea540",
+      "promptHash": "1bc82ef17649039c",
+      "model": "sonnet",
+      "verdict": "violated",
+      "reason": "The catch block swallows the fetchInvoices failure and returns an empty array, which is indistinguishable from a customer that legitimately has zero invoices; the error is not logged, rethrown, or otherwise surfaced.",
+      "line": 20,
+      "checkedAt": "2026-09-16T20:06:27.348Z"
     },
     "be.errors.no-silent-fallback\u0000api/reports-safe.ts": {
       "ruleId": "be.errors.no-silent-fallback",
@@ -244,6 +265,16 @@
       "reason": "This handler makes a single findOrderById call per request with no loop or iteration over a collection, so there's no N+1 pattern here.",
       "checkedAt": "2026-09-16T19:10:48.480Z"
     },
+    "data.orm.no-query-inside-loop\u0000api/reports-ignored.ts": {
+      "ruleId": "data.orm.no-query-inside-loop",
+      "file": "api/reports-ignored.ts",
+      "fileHash": "d5be2f8af80ea540",
+      "promptHash": "27ec5edad95b390b",
+      "model": "sonnet",
+      "verdict": "not-applicable",
+      "reason": "There is no loop or per-item iteration here; invoicesForCustomer makes a single fetchInvoices call, so the N+1 query-in-a-loop pattern this rule targets does not occur.",
+      "checkedAt": "2026-09-16T20:06:27.264Z"
+    },
     "data.orm.no-query-inside-loop\u0000api/reports-safe.ts": {
       "ruleId": "data.orm.no-query-inside-loop",
       "file": "api/reports-safe.ts",
@@ -335,6 +366,16 @@
       "verdict": "not-applicable",
       "reason": "This handler only reads an order and returns it; there is no read-then-decide-then-write sequence for the rule to apply to.",
       "checkedAt": "2026-09-16T19:10:46.908Z"
+    },
+    "data.tx.no-read-then-write-race\u0000api/reports-ignored.ts": {
+      "ruleId": "data.tx.no-read-then-write-race",
+      "file": "api/reports-ignored.ts",
+      "fileHash": "d5be2f8af80ea540",
+      "promptHash": "fcb529af462fa479",
+      "model": "sonnet",
+      "verdict": "not-applicable",
+      "reason": "This file only wraps a fetch call in try/catch with an empty-array fallback; there is no read-decide-write sequence or state mutation susceptible to a race condition.",
+      "checkedAt": "2026-09-16T20:06:24.981Z"
     },
     "data.tx.no-read-then-write-race\u0000api/reports-safe.ts": {
       "ruleId": "data.tx.no-read-then-write-race",

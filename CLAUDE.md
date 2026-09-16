@@ -103,6 +103,14 @@ grounding needs.
   settings file belongs to whoever wrote it. Report it and leave it alone.
 - **The llm tier is opt-in (`--llm`) and never runs in a git hook.** It costs
   money and needs the network. The mechanical tier is what gates a commit.
+- **The judge reads comments as evidence.** It is given whole files, so prose
+  is part of its input. A comment explaining that a check lives one layer down
+  can flip a verdict from violated to ok on its own, without the code changing.
+  That is usually right and occasionally dangerous: a confident but false
+  comment can talk the judge out of a real finding, which makes explanatory
+  prose an injection surface. Never treat a verdict as independent confirmation
+  of a claim the file itself makes. Mutation grounding is the answer where it
+  matters, because an experiment cannot be talked round.
 - **An llm rule must be able to answer `not-applicable`.** Routing hands a rule
   every file its globs match, and most are irrelevant to it. Forcing a binary
   answer manufactures false positives. Any new llm rule needs fixture cases
