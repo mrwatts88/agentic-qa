@@ -3,13 +3,16 @@ import { parseArgs } from "node:util";
 import { execFileSync } from "node:child_process";
 import pc from "picocolors";
 import { loadConfig } from "./config.js";
-import { checkContracts, report } from "./contracts/check.js";
+import { checkContracts, collectTests, report } from "./contracts/check.js";
 import { runEval } from "./contracts/evaluate.js";
+import { groundAll } from "./contracts/mutate.js";
+import { loadLedger, saveLedger } from "./contracts/ledger.js";
 
 const USAGE = `agentic-qa - rule enforcement for AI-written code
 
 Usage:
   agentic-qa contracts [options]    verify tests assert what their descriptions claim
+  agentic-qa mutate [options]       break the code on purpose and check the tests notice
   agentic-qa eval [options]         score the judge against known-correct verdicts
 
 Options:
@@ -56,7 +59,7 @@ async function main(): Promise<number> {
     return runEval(cwd, values.expected ?? "expected.json") ? 0 : 1;
   }
 
-  if (command !== "contracts") {
+  if (command !== "contracts" && command !== "mutate") {
     process.stderr.write(pc.red(`unknown command: ${command}\n\n`) + USAGE);
     return 1;
   }
@@ -64,6 +67,27 @@ async function main(): Promise<number> {
   const config = loadConfig(cwd);
   if (values.model) config.judge.model = values.model;
   if (values.concurrency) config.judge.concurrency = Number(values.concurrency);
+
+  if (command === "mutate") {
+    const tests = await collectTests(
+      config,
+      cwd,
+      values.staged ? stagedFiles(cwd) : undefined,
+    );
+    const ledger = loadLedger(cwd);
+    const summary = await groundAll(tests, ledger, config, cwd, values.all);
+    saveLedger(cwd, ledger);
+
+    const cost = summary.costUsd > 0 ? ` · $${summary.costUsd.toFixed(3)}` : "";
+    process.stdout.write(
+      pc.dim(
+        `${summary.confirmed} confirmed, ${summary.refuted} refuted, ` +
+          `${summary.skipped} skipped${cost}\n`,
+      ),
+    );
+    // A refuted verdict means the judge was wrong, which is worth failing on.
+    return summary.refuted > 0 ? 1 : 0;
+  }
 
   const summary = await checkContracts(config, {
     cwd,

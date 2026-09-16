@@ -60,7 +60,8 @@ gate enforces.
 `.qa/contracts.json` is committed. Re-judge only when the claim changed, the
 body changed, or the judge changed (`JUDGE_VERSION` or model). Hashes ignore
 whitespace so reformatting is free. **Verified: a run where nothing changed does
-no work and costs nothing.**
+no work and costs nothing.** Mutation results cache the same way, keyed on
+`MUTATION_VERSION`.
 
 Test ids are keyed on the title, so editing a description produces a new id and
 forces a re-judge. That is intended behavior, not a cache miss.
@@ -72,6 +73,13 @@ after that a clean run means nothing. The judge is scored against a corpus with
 known-correct verdicts (`agentic-qa eval`) and the two error directions are
 reported separately. A false positive is a release blocker.
 
+### A judgment is not evidence until an experiment says so
+
+`agentic-qa mutate` breaks the implementation on purpose and checks the test
+notices. The model proposes the break, the test run decides. When the experiment
+disagrees with the verdict, the verdict is reported as refuted rather than
+quietly kept.
+
 ### The judge runs through headless `claude -p`
 
 Uses existing Claude Code OAuth, so no separate API key locally. `--safe-mode`
@@ -80,7 +88,19 @@ taking a judgment from $0.083 to $0.012 (haiku $0.008). Do **not** use `--bare`,
 which is cheaper still but forces API-key auth.
 
 `--json-schema` gives structured output natively, so no parsing JSON out of
-prose.
+prose. All model calls go through one helper in `src/judge.ts` so the cost flags
+cannot drift apart.
+
+### Never trust a test runner's exit code to mean "the test failed"
+
+**vitest exits 0 when `-t` matches nothing.** A typo in a test selector would
+otherwise look identical to "the test passed despite the mutation", which would
+condemn a perfectly good test: a false positive, the exact failure mode that
+kills adoption. Mutation grounding therefore reads the per-assertion `status`
+(`passed` / `failed` / `skipped`) out of the JSON reporter and matches it
+structurally on `ancestorTitles` plus `title`. Note the reporter writes to a
+file (`<root>/.vitest/json/output.json`), not stdout, and `fullName` joins the
+describe path with a space rather than a separator.
 
 ### Start small, then bulk-load the rules
 
@@ -94,42 +114,29 @@ into structured rules is an afternoon of work once the machine exists.
 
 ## Status
 
-**Done and verified.** The test-contract checker end to end: extraction
-(including `@describes` docblocks and nested describe blocks), hash-based
-invalidation, the judge, the committed ledger, the CLI, and judge scoring.
-Scores 5/5 on the fixture corpus with no false positives or negatives, at about
-a cent per judgment.
+**Done and verified.**
 
-**In progress.** Mutation grounding.
+- The test-contract checker end to end: extraction (including `@describes`
+  docblocks and nested describe blocks), hash-based invalidation, the judge, the
+  committed ledger, and the CLI. Scores 5/5 on `fixtures/sample` with no false
+  positives or negatives, at about a cent per judgment.
+- Judge scoring (`agentic-qa eval`), reporting the two error directions
+  separately.
+- Mutation grounding (`agentic-qa mutate`), verified on `fixtures/runnable`,
+  where two tests that both pass are correctly separated into one real and one
+  worthless by breaking the implementation.
 
 ---
 
 ## Next
 
-### 1. Mutation grounding
+### 1. The rules corpus and mechanical checkers
 
-The strongest available answer to "is this test real". The judge already
-proposes a mutation that would violate the description and currently that
-proposal is stored and ignored. Instead: apply it to the implementation, run
-that single test, and require it to fail. The model proposes, the test run
-disposes. That converts an opinion into a deterministic experiment.
-
-Design notes:
-
-- Mutate the implementation, never the test.
-- Map test to implementation via the test file's imports.
-- Run one test: `vitest run <file> -t "<name>"`.
-- Safety: hold the original contents in memory, restore in a `finally`, and
-  refuse to run when the target file has uncommitted changes so `git checkout`
-  is always a valid recovery.
-- Expensive, so it is opt-in per run and cached like everything else.
-
-### 2. The rules corpus and mechanical checkers
-
-The tier-0 majority. Source material is the twelve-topic prose corpus in
-`~/code/full-stack-swe` (about 34,000 words), which is already organized by
-area: web fundamentals, backend architecture, data, frontend, auth and security,
-testing, repo hygiene, devops, observability, performance, infrastructure.
+The tier-0 majority, and the other half of the original idea. Source material is
+the twelve-topic prose corpus in `~/code/full-stack-swe` (about 34,000 words),
+already organized by area: web fundamentals, backend architecture, data,
+frontend, auth and security, testing, repo hygiene, devops, observability,
+performance, infrastructure.
 
 Rule schema, one structured object per rule:
 
@@ -155,10 +162,10 @@ Candidate llm rules: endpoint checks resource ownership and not merely that
 someone is logged in; catch blocks that hide failures behind a plausible
 default; a new helper duplicating an existing one.
 
-Do this once there is a real repo to calibrate against. Writing rules with no
+Best done once there is a real repo to calibrate against. Writing rules with no
 code to run them on is how you end up with hundreds of unenforceable ones.
 
-### 3. Adoption on an existing repo: the baseline ratchet
+### 2. Adoption on an existing repo: the baseline ratchet
 
 Turning a full corpus on an existing codebase produces thousands of violations
 and gets switched off the same afternoon. Snapshot the existing violations, fail
@@ -169,7 +176,7 @@ Also needed: a sanctioned escape hatch, `// qa-ignore: <rule-id> — reason`, th
 is recorded and auditable. Without one, people disable the whole check instead
 of the one rule.
 
-### 4. Distribution
+### 3. Distribution
 
 The thing that decides whether this is a system or a one-off. Rules live in a
 versioned package consumed by both halves; a repo holds only `qa.config.yaml`
@@ -181,12 +188,21 @@ and `.qa/`. If rules live in the repo, there are N copies to maintain.
 - Both depend on the same rules package, so updating rules centrally updates
   every repo.
 
-### 5. Tests for this tool itself
+### 4. Tests for this tool itself
 
 There are currently none, which is not a defensible position for a QA tool. The
 deterministic parts (extraction, hashing, invalidation, ledger pruning, eval
-scoring) are all straightforwardly unit-testable. The judge is the only
-non-deterministic piece and is covered by the fixture corpus instead.
+scoring, mutation application and restore) are all straightforwardly
+unit-testable. The judge is the only non-deterministic piece and is covered by
+the fixture corpora instead.
+
+### 5. Mutation grounding, second pass
+
+Working, but narrow. Currently assumes vitest and finds the implementation by
+following the test file's relative imports. Worth extending to other runners and
+to tests whose subject is reached less directly. Also worth running the whole
+suite rather than one test occasionally, to catch a mutation that breaks
+something other than its target.
 
 ---
 

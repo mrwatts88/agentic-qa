@@ -3,11 +3,14 @@ import type { ExtractedTest, JudgeResult, JudgeInvocation } from "./types.js";
 import type { QaConfig } from "./config.js";
 
 /**
- * Bump when the system prompt or schema changes. Every cached verdict with a
- * lower version is re-judged, because a verdict is only meaningful relative to
- * the prompt that produced it.
+ * Bump when the contract system prompt or schema changes. Every cached verdict
+ * with a lower version is re-judged, because a verdict is only meaningful
+ * relative to the prompt that produced it.
  */
 export const JUDGE_VERSION = 3;
+
+/** Same idea, for mutation proposals. */
+export const MUTATION_VERSION = 1;
 
 /**
  * Measured on this machine, same judgment, same model (sonnet):
@@ -31,7 +34,7 @@ const BASE_FLAGS = [
   "--safe-mode",
 ];
 
-const SYSTEM_PROMPT = `You are a test contract judge for a production TypeScript codebase.
+const CONTRACT_SYSTEM_PROMPT = `You are a test contract judge for a production TypeScript codebase.
 
 You are given an English description of what a test claims to verify, and the body of that test.
 
@@ -47,7 +50,7 @@ Read the description on its own. Do not work out what it must have meant from th
 
 Judge only the relationship between the description and the assertions. Do not comment on naming, style, formatting, or behaviors the description does not claim. Name the specific assertion that carries the weight, or the specific gap that lets a broken implementation pass.`;
 
-const SCHEMA = {
+const CONTRACT_SCHEMA = {
   type: "object",
   properties: {
     verdict: { type: "string", enum: ["upheld", "violated", "unverifiable"] },
@@ -62,19 +65,39 @@ const SCHEMA = {
   required: ["verdict", "reason"],
 } as const;
 
-function buildPrompt(test: ExtractedTest): string {
-  const name = [...test.describePath, test.title].join(" > ");
-  return [
-    `Description: ${test.description}`,
-    `File: ${test.file}`,
-    `Test: ${name}`,
-    "",
-    "Test body:",
-    "```ts",
-    test.body,
-    "```",
-  ].join("\n");
-}
+const MUTATION_SYSTEM_PROMPT = `You break production code on purpose, so that a test suite can be measured.
+
+You are given an English description of a behavior, the test that claims to verify it, and the source of the implementation files that test exercises.
+
+Produce one edit to the IMPLEMENTATION that breaks exactly the described behavior. Never edit the test.
+
+Requirements, all of them mandatory:
+- The result must still parse and type-check. Do not delete a closing brace, leave a dangling expression, or remove something another line still references.
+- Break only the described behavior. Do not reformat, rename, or change anything the description does not cover.
+- "old_str" must be copied verbatim from the file you name, including indentation, and must appear EXACTLY ONCE in that file. Prefer a distinctive multi-line span over a short one that repeats.
+- The break must be real. Returning the same code, or a cosmetic change, makes the measurement meaningless.
+
+A good mutation is the bug a tired engineer would actually write: a dropped guard clause, an inverted condition, an off-by-one, a branch that returns the success value without doing the work.`;
+
+const MUTATION_SCHEMA = {
+  type: "object",
+  properties: {
+    file: {
+      type: "string",
+      description: "Path of the file to edit, exactly as given in the prompt.",
+    },
+    old_str: {
+      type: "string",
+      description: "Verbatim snippet from that file, appearing exactly once.",
+    },
+    new_str: { type: "string", description: "Replacement text." },
+    explanation: {
+      type: "string",
+      description: "One sentence on which described behavior this breaks.",
+    },
+  },
+  required: ["file", "old_str", "new_str", "explanation"],
+} as const;
 
 function run(
   args: string[],
@@ -95,20 +118,27 @@ function run(
   });
 }
 
-export async function judgeContract(
-  test: ExtractedTest,
+/**
+ * The single place this codebase talks to a model. Both call types share it so
+ * the cost flags cannot drift apart.
+ */
+async function invoke(
+  prompt: string,
+  schema: unknown,
+  systemPrompt: string,
   config: QaConfig,
-): Promise<JudgeResult & JudgeInvocation> {
+  label: string,
+): Promise<{ output: any; costUsd: number; durationMs: number }> {
   const args = [
     "-p",
-    buildPrompt(test),
+    prompt,
     ...BASE_FLAGS,
     "--json-schema",
-    JSON.stringify(SCHEMA),
+    JSON.stringify(schema),
     "--model",
     config.judge.model,
     "--system-prompt",
-    SYSTEM_PROMPT,
+    systemPrompt,
     "--max-budget-usd",
     String(config.judge.maxBudgetUsd),
   ];
@@ -120,27 +150,112 @@ export async function judgeContract(
     envelope = JSON.parse(stdout);
   } catch {
     throw new Error(
-      `judge returned unparseable output for ${test.id}: ${stdout.slice(0, 300)}`,
+      `${label}: unparseable output: ${stdout.slice(0, 300)}`,
     );
   }
 
   if (envelope.is_error) {
     throw new Error(
-      `judge errored for ${test.id}: ${envelope.result ?? envelope.api_error_status ?? "unknown"}`,
+      `${label}: ${envelope.result ?? envelope.api_error_status ?? "unknown error"}`,
     );
   }
 
-  const out = envelope.structured_output;
-  if (!out?.verdict) {
-    throw new Error(`judge returned no structured verdict for ${test.id}`);
+  if (!envelope.structured_output) {
+    throw new Error(`${label}: no structured output returned`);
   }
 
   return {
-    verdict: out.verdict,
-    reason: out.reason ?? "",
-    weakestAssertion: out.weakest_assertion,
-    suggestedMutation: out.suggested_mutation,
+    output: envelope.structured_output,
     costUsd: envelope.total_cost_usd ?? 0,
     durationMs: envelope.duration_ms ?? 0,
+  };
+}
+
+function testHeading(test: ExtractedTest): string {
+  return [...test.describePath, test.title].join(" > ");
+}
+
+export async function judgeContract(
+  test: ExtractedTest,
+  config: QaConfig,
+): Promise<JudgeResult & JudgeInvocation> {
+  const prompt = [
+    `Description: ${test.description}`,
+    `File: ${test.file}`,
+    `Test: ${testHeading(test)}`,
+    "",
+    "Test body:",
+    "```ts",
+    test.body,
+    "```",
+  ].join("\n");
+
+  const { output, costUsd, durationMs } = await invoke(
+    prompt,
+    CONTRACT_SCHEMA,
+    CONTRACT_SYSTEM_PROMPT,
+    config,
+    `contract judge (${test.id})`,
+  );
+
+  if (!output.verdict) {
+    throw new Error(`contract judge (${test.id}): no verdict in output`);
+  }
+
+  return {
+    verdict: output.verdict,
+    reason: output.reason ?? "",
+    weakestAssertion: output.weakest_assertion,
+    suggestedMutation: output.suggested_mutation,
+    costUsd,
+    durationMs,
+  };
+}
+
+export interface ProposedMutation {
+  file: string;
+  oldStr: string;
+  newStr: string;
+  explanation: string;
+  costUsd: number;
+}
+
+export async function proposeMutation(
+  test: ExtractedTest,
+  sources: { path: string; text: string }[],
+  config: QaConfig,
+): Promise<ProposedMutation> {
+  const rendered = sources
+    .map((s) => [`--- ${s.path} ---`, "```ts", s.text, "```"].join("\n"))
+    .join("\n\n");
+
+  const prompt = [
+    `Described behavior: ${test.description}`,
+    `Test: ${testHeading(test)}`,
+    "",
+    "The test that claims to verify it:",
+    "```ts",
+    test.body,
+    "```",
+    "",
+    "Implementation files it exercises:",
+    "",
+    rendered,
+  ].join("\n");
+
+  const { output, costUsd } = await invoke(
+    prompt,
+    MUTATION_SCHEMA,
+    MUTATION_SYSTEM_PROMPT,
+    config,
+    `mutation proposal (${test.id})`,
+  );
+
+  return {
+    file: output.file,
+    oldStr: output.old_str,
+    newStr: output.new_str,
+    explanation: output.explanation ?? "",
+    costUsd,
   };
 }

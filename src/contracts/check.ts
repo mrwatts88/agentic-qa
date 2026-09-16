@@ -48,24 +48,32 @@ async function pool<T, R>(
   return results;
 }
 
-export async function checkContracts(
+/** Shared by every command that needs to know what tests exist. */
+export async function collectTests(
   config: QaConfig,
-  options: CheckOptions,
-): Promise<CheckSummary> {
+  cwd: string,
+  only?: string[],
+): Promise<ExtractedTest[]> {
   const files = await glob(config.testGlobs, {
-    cwd: options.cwd,
+    cwd,
     ignore: config.ignore,
     absolute: false,
   });
 
-  const scoped = options.only
-    ? files.filter((f) => options.only!.includes(f))
-    : files;
+  const scoped = only ? files.filter((f) => only.includes(f)) : files;
 
   const tests: ExtractedTest[] = [];
   for (const file of scoped) {
-    tests.push(...extractTests(resolve(options.cwd, file), file));
+    tests.push(...extractTests(resolve(cwd, file), file));
   }
+  return tests;
+}
+
+export async function checkContracts(
+  config: QaConfig,
+  options: CheckOptions,
+): Promise<CheckSummary> {
+  const tests = await collectTests(config, options.cwd, options.only);
 
   const ledger: Ledger = loadLedger(options.cwd);
   const model = config.judge.model;

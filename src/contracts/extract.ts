@@ -1,5 +1,6 @@
 import ts from "typescript";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
+import { dirname, resolve, join } from "node:path";
 import type { ExtractedTest } from "../types.js";
 
 const TEST_FNS = new Set(["it", "test"]);
@@ -124,4 +125,53 @@ export function extractTests(
 
   ts.forEachChild(source, visit);
   return found;
+}
+
+/**
+ * Relative imports of a test file, resolved to files on disk. Used to find the
+ * implementation a test exercises, so mutation grounding knows what to break.
+ */
+export function extractRelativeImports(absPath: string): string[] {
+  const text = readFileSync(absPath, "utf8");
+  const source = ts.createSourceFile(
+    absPath,
+    text,
+    ts.ScriptTarget.Latest,
+    true,
+    scriptKind(absPath),
+  );
+
+  const dir = dirname(absPath);
+  const resolved: string[] = [];
+
+  for (const statement of source.statements) {
+    if (!ts.isImportDeclaration(statement)) continue;
+    const specifier = statement.moduleSpecifier;
+    if (!ts.isStringLiteral(specifier)) continue;
+    if (!specifier.text.startsWith(".")) continue;
+
+    const base = resolve(dir, specifier.text);
+    // TypeScript sources may be imported with no extension, with .js, or with
+    // the real extension. Try the plausible spellings in order.
+    const candidates = [
+      base,
+      `${base}.ts`,
+      `${base}.tsx`,
+      base.replace(/\.js$/, ".ts"),
+      base.replace(/\.js$/, ".tsx"),
+      join(base, "index.ts"),
+      join(base, "index.tsx"),
+    ];
+
+    for (const candidate of candidates) {
+      if (candidate.endsWith(".ts") || candidate.endsWith(".tsx")) {
+        if (existsSync(candidate) && !resolved.includes(candidate)) {
+          resolved.push(candidate);
+          break;
+        }
+      }
+    }
+  }
+
+  return resolved;
 }

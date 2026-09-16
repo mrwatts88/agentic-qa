@@ -95,6 +95,48 @@ VAGUE coupon.test.ts
           this description what observable outcome would prove it wrong.
 ```
 
+## Proving it, instead of just believing it
+
+A model saying a test is weak is still an opinion. `agentic-qa mutate` turns it
+into an experiment:
+
+1. ask the model for an edit to the **implementation** that breaks the described
+   behavior
+2. apply it
+3. run that one test
+4. put the file back
+
+If the checker said the test was real, it must now fail. If the checker said the
+test was weak, it must still pass. When reality disagrees with the checker, the
+checker was wrong, and it says so rather than quietly keeping its verdict.
+
+This is the part that makes the whole approach defensible. Both tests in
+`fixtures/runnable` pass against correct code, so running the suite tells you
+nothing about which one is real. Breaking the code does:
+
+```
+CONFIRMED rejects a coupon that expired before the current time
+  the test failed when the described behavior was broken, so it is real
+  broke: Inverting the expiration check allows expired coupons to pass through.
+
+CONFIRMED applies a percentage discount to the cart total
+  the test still passed when the described behavior was broken, confirming it
+  does not verify its description
+  broke: Removes the line that modifies cart.total to apply the discount.
+```
+
+Safety rules, all enforced in code:
+
+- it only edits the implementation, never a test
+- it refuses to touch a file that is untracked or has uncommitted changes, so
+  git can always recover it
+- it restores the original file even if the run throws
+- it runs one mutation at a time, because concurrent edits to real source files
+  would corrupt each other
+- it confirms the test actually *ran*. vitest exits 0 when it matches no tests,
+  so a bad test selector would otherwise look like "the test passed despite the
+  mutation" and wrongly condemn a good test
+
 ## Quick start
 
 ```
@@ -110,6 +152,7 @@ agentic-qa contracts --staged    # only tests in files staged in git
 agentic-qa contracts --all       # re-check everything
 agentic-qa contracts --json      # machine-readable output
 
+agentic-qa mutate                # prove the verdicts by breaking the code
 agentic-qa eval                  # score the checker itself (see below)
 ```
 

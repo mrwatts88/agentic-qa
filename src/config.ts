@@ -22,6 +22,10 @@ export interface QaConfig {
   };
   /** Treat `unverifiable` (description too vague to falsify) as a failure. */
   failOnUnverifiable: boolean;
+  mutation: {
+    /** Directory vitest runs against, relative to the repo root. */
+    root: string;
+  };
 }
 
 export const DEFAULT_CONFIG: QaConfig = {
@@ -34,6 +38,9 @@ export const DEFAULT_CONFIG: QaConfig = {
     timeoutMs: 120_000,
   },
   failOnUnverifiable: false,
+  mutation: {
+    root: ".",
+  },
 };
 
 const CONFIG_NAMES = ["qa.config.yaml", "qa.config.yml"];
@@ -47,6 +54,7 @@ export function loadConfig(cwd: string): QaConfig {
       ...DEFAULT_CONFIG,
       ...raw,
       judge: { ...DEFAULT_CONFIG.judge, ...(raw.judge ?? {}) },
+      mutation: { ...DEFAULT_CONFIG.mutation, ...(raw.mutation ?? {}) },
     };
   }
   return DEFAULT_CONFIG;

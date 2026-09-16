@@ -44,6 +44,23 @@ export interface ContractRecord extends JudgeResult {
   model: string;
   judgeVersion: number;
   checkedAt: string;
+  /** Present once the verdict has been tested by experiment. */
+  mutation?: MutationOutcome;
+  mutationVersion?: number;
+}
+
+/**
+ * The result of breaking the implementation on purpose and watching the test.
+ *
+ * `confirmed` means reality agreed with the judge. `refuted` means it did not,
+ * which is the interesting case: the judge was wrong about this test.
+ */
+export interface MutationOutcome {
+  status: "confirmed" | "refuted" | "skipped";
+  reason: string;
+  file?: string;
+  mutation?: string;
+  checkedAt: string;
 }
 
 export interface Ledger {

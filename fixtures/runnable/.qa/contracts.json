@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "records": {
+    "cart.test.ts::applyCoupon > applies a percentage discount to the cart total": {
+      "id": "cart.test.ts::applyCoupon > applies a percentage discount to the cart total",
+      "file": "cart.test.ts",
+      "description": "applies a percentage discount to the cart total",
+      "descriptionSource": "title",
+      "descriptionHash": "56b053a5e34a9e57",
+      "bodyHash": "e423c2d4ef443449",
+      "verdict": "violated",
+      "reason": "The assertion `expect(result).toBeDefined()` only verifies that a value is returned, not that a percentage discount was actually applied to the cart total. The test would pass even if the discount logic is completely absent or if a fixed discount is applied instead of a percentage-based one.",
+      "weakestAssertion": "expect(result).toBeDefined() - checks only for existence of a return value, not for the actual discount behavior",
+      "suggestedMutation": "Modify applyCoupon to return the cart unmodified (with no discount applied), and the test would still pass because the result would be defined.",
+      "model": "haiku",
+      "judgeVersion": 3,
+      "checkedAt": "2026-09-16T14:54:40.431Z",
+      "mutation": {
+        "status": "confirmed",
+        "reason": "the test still passed when the described behavior was broken, confirming it does not verify its description",
+        "file": "/Users/mattwatts/code/agentic-qa/fixtures/runnable/cart.ts",
+        "mutation": "Removes the line that modifies cart.total to apply the percentage discount, breaking the described behavior while the test still passes because it only checks that result is defined.",
+        "checkedAt": "2026-09-16T14:55:55.048Z"
+      },
+      "mutationVersion": 1
+    },
+    "cart.test.ts::applyCoupon > rejects a coupon that expired before the current time": {
+      "id": "cart.test.ts::applyCoupon > rejects a coupon that expired before the current time",
+      "file": "cart.test.ts",
+      "description": "rejects a coupon that expired before the current time",
+      "descriptionSource": "title",
+      "descriptionHash": "45d902e0b1e16b9c",
+      "bodyHash": "9fedf19259d4510c",
+      "verdict": "upheld",
+      "reason": "The assertions comprehensively verify that an expired coupon is rejected. The test checks result.ok is false (rejection occurred), result.error is the specific \"COUPON_EXPIRED\" code (not a different error), and c.total and c.discountApplied remain unchanged (the cart was not modified). If the expiration check was removed, inverted, or returned the wrong error code, these assertions would fail.",
+      "weakestAssertion": "The `result.error === \"COUPON_EXPIRED\"` assertion is the most specific to expiration. Without it, a function that rejected all coupons for any reason would still pass. However, combined with the other assertions checking that the cart wasn't modified, the test suite as a whole is robust.",
+      "suggestedMutation": "Change the expiration check logic from `expiresAt < now` to `expiresAt <= now`, which would incorrectly reject coupons that expire exactly at the current time. This would violate the edge case handling implied by the test.",
+      "model": "haiku",
+      "judgeVersion": 3,
+      "checkedAt": "2026-09-16T14:54:47.994Z",
+      "mutation": {
+        "status": "confirmed",
+        "reason": "the test failed when the described behavior was broken, so it is real",
+        "file": "/Users/mattwatts/code/agentic-qa/fixtures/runnable/cart.ts",
+        "mutation": "Inverting the expiration check allows expired coupons to pass through instead of being rejected.",
+        "checkedAt": "2026-09-16T14:55:23.854Z"
+      },
+      "mutationVersion": 1
+    }
+  }
+}
