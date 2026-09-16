@@ -114,6 +114,50 @@ one flag, and the README documents the full line.
 This sits alongside "never overwrite an existing file"; they are the same
 principle applied to what `init` writes and to what is already there.
 
+### The turn boundary is a call site of its own, and it blocks
+
+CI was the only place any judgment ran, which is too late to steer anything: it
+reports after the agent that wrote the code has stopped. The `Stop` hook fires
+when the agent finishes a turn, and it is a far better fit than either of the
+places judgment currently lives.
+
+Per edit and per turn are different jobs, and the split follows from what each
+can see:
+
+- **PostToolUse** fires after *every* Edit or Write. It sees one file mid-draft,
+  and its matcher means anything changed another way — `git mv`, a `sed` in
+  Bash, a generator, a lockfile rewritten by an install — never reaches it at
+  all. Mechanical only, advisory, and it cannot gate: it fires after the tool
+  ran, so a non-zero exit stops the turn without undoing anything. It earns its
+  place by interrupting compounding, not by coverage: agents copy their own
+  patterns, so a violation caught at the first edit does not reach the next six
+  files. It is the expendable tier.
+- **Stop** fires once at the turn boundary. It sees the whole accumulated
+  change via the working tree, which closes the matcher hole, and it judges
+  final state rather than a draft — a violation introduced and then fixed mid-
+  turn is never reported, which is correct. It can block, and it is the only
+  agent-facing place that can.
+
+Both tiers block there, mechanical and judgment alike. The counter-argument was
+that a judge verdict is non-deterministic and persuadable, so blocking on one
+risks trapping a session; `stop_hook_active` answers it. The hook blocks once,
+and on the second firing reports without blocking, so the worst case is one
+wasted round trip rather than a session that cannot end. Advisory-only was
+rejected because an agent free to ignore a finding reproduces the CI problem
+this call site exists to fix.
+
+Run mechanical first and skip the judgment pass when it finds errors: the
+enforcement ladder applied at runtime, not just when a rule is written. There is
+no point paying a model to judge code that already fails a pattern.
+
+Two things the contract settles, both verified against the docs rather than
+recalled. `Stop` supports no matchers, and its default timeout is 600s, so
+**latency was never the constraint here — cost is.** The 30s figure that made
+this look tight is the timeout `init` writes for the PostToolUse hook, not a
+platform limit. And the payload carries `cwd` plus `stop_hook_active`; blocking
+is either exit 2 or `hookSpecificOutput.decision: "block"` with a `reason`,
+which is what the agent is shown.
+
 ### Hooks reach a repo the way husky's do
 
 A hook in `.git/hooks` is untracked, so it reaches whoever ran `init` and nobody
@@ -443,21 +487,3 @@ other than its target.
 - **How `qa-ignore` gets audited.** The escape hatch is necessary, but a repo
   where it spreads unchecked has quietly turned the rules off. Counting them and
   watching the trend is probably enough.
-- **Whether `contracts` belongs in the agent loop, not only in CI.** CI was
-  chosen because the judge costs money and needs the network, not because it is
-  slow — the PostToolUse hook is fast because it is pattern matching, which is a
-  different claim. But the argument for the fast loop applies here at full
-  strength: a weak test found in CI is found after the agent that wrote it has
-  moved on, and while it still holds the context is exactly when it is cheap to
-  fix.
-
-  The shape fits better than it first appears. The hook reports only on the file
-  just edited, so a test-file edit is one judgment; the ledger already makes it
-  incremental; and the hook never gates, which is the right failure mode for a
-  verdict that can be wrong. Note the neighbouring invariant is scoped to git
-  hooks on purpose, and does not forbid this.
-
-  Unmeasured, and the reason this is a question rather than a decision: whether
-  a judge call fits inside the hook's 30s timeout, and what it costs over a turn
-  where an agent edits one test file repeatedly. Opt-in, with a budget guard, is
-  the obvious first version.

@@ -72,11 +72,24 @@ grounding needs.
 - **All model calls go through `invoke()` in `src/judge.ts`.** Everything else
   is deterministic and unit-testable. Keep it that way, and keep the cost flags
   in one place so they cannot drift.
-- **Bump `JUDGE_VERSION` or `MUTATION_VERSION` whenever a system prompt or
-  schema changes.** A cached result is only meaningful relative to the prompt
-  that produced it; the bump invalidates every stale one.
-- **`.qa/contracts.json` is committed.** It is the durable record of what the
-  suite claims and whether those claims hold. `.qa/cache/` is not.
+- **Bump `JUDGE_VERSION`, `RULE_JUDGE_VERSION` or `MUTATION_VERSION` whenever
+  its system prompt or schema changes.** A cached result is only meaningful
+  relative to the prompt that produced it; the bump invalidates every stale one.
+  There are three because the three prompts change independently, and one shared
+  constant would re-judge every contract because a rule prompt moved. Every
+  ledger record must carry its version, and the freshness check must compare it:
+  the rules ledger shipped without one, so for a while a bump silently
+  invalidated nothing. A per-rule `promptHash` does not cover this — it sees the
+  rule's own question, never the shared system prompt around it.
+- **`.qa/contracts.json` and `.qa/rules.json` are committed.** They are the
+  durable record of what the suite claims, and of every judgment verdict, and
+  whether those claims hold. `.qa/cache/` and `.qa/tmp/` are not. Because they
+  are shared, a stale record is not a local annoyance: it propagates.
+- **A scoped run never prunes.** Both ledgers drop dead records, but a run
+  narrowed to staged or edited files has no view of anything else, so deleting
+  what it did not look at would make a committed file depend on how it was last
+  invoked. Contracts prunes tests that no longer exist only on an unscoped run;
+  the rules ledger prunes verdicts whose file is gone, on the same condition.
 - **Test ids are keyed on the title.** Editing a description yields a new id
   and forces a re-judge. That is intended, not a cache miss.
 - **Never trust a test runner's exit code to mean "the test failed".** vitest

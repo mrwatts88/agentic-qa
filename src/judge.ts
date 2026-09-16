@@ -13,6 +13,18 @@ export const JUDGE_VERSION = 4;
 export const MUTATION_VERSION = 1;
 
 /**
+ * Same idea, for the rule judge's system prompt and schema.
+ *
+ * Deliberately separate from JUDGE_VERSION. The two prompts change
+ * independently, and sharing one constant would re-judge every contract
+ * because a rule prompt moved, or every rule because a contract prompt did.
+ * Per-rule prompt changes are already covered by the promptHash in the rules
+ * ledger; this covers the shared system prompt and schema, which that hash
+ * cannot see.
+ */
+export const RULE_JUDGE_VERSION = 1;
+
+/**
  * Measured on this machine, same judgment, same model (sonnet):
  *   baseline                  $0.083   19,351 cache-creation tokens
  *   --strict-mcp-config       $0.020    3,113

@@ -168,7 +168,7 @@ async function main(): Promise<number> {
 
     // Opt-in: the llm tier costs money, so it never runs in a pre-commit hook.
     if (values.llm) {
-      const llm = await runLlmRules(cwd, files, rules, config, values.all);
+      const llm = await runLlmRules(cwd, files, rules, config, values.all, values.staged);
       findings.push(...llm.findings);
 
       if (values.expected) {
