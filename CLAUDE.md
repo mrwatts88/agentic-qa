@@ -64,9 +64,9 @@ grounding needs.
   enforce it: `mechanical` (lint, tsc, dependency-cruiser, semgrep) before
   `llm` before `human`. Paying a model to do a linter's job is strictly worse.
   A rule that cannot name its enforcement is not a rule yet.
-- **One CLI, three call sites.** Agent harness hooks, git hooks, and CI all
-  invoke this same binary. Never fork the logic per call site, or the rules the
-  agent is told about drift from the rules the gate enforces.
+- **One CLI, four call sites.** The per-edit hook, the turn-boundary hook, git
+  hooks, and CI all invoke this same binary. Never fork the logic per call site,
+  or the rules the agent is told about drift from the rules the gate enforces.
 - **No model calls in pre-commit.** Git hooks run the mechanical tier only.
   Commits must work offline and must not cost money.
 - **All model calls go through `invoke()` in `src/judge.ts`.** Everything else
@@ -114,8 +114,33 @@ grounding needs.
   tree's changes when no path is given. Complaining about pre-existing
   violations in code the agent never touched is noise, and noise gets the hook
   uninstalled. Repo-wide is fast enough, but speed was never the constraint.
-- **Stdin parsing stays at the CLI boundary.** `runHook` is a pure function of
-  cwd and path so its tests never wait on a pipe that may not close.
+- **The Stop hook blocks at most once per turn.** `stop_hook_active` is true
+  when a Stop hook has already held this turn; blocking again from there is how
+  a session becomes unable to finish, which is far worse than a noisy report.
+  The second pass repeats the findings and lets go, so the worst case is one
+  wasted round trip.
+- **Stop blocks through `decision`, never through the exit code, and always
+  exits zero.** A non-zero exit would hold the turn without saying why, and a
+  crash would hold it forever. Failing to run is reported as context, never as
+  a block.
+- **Stop runs the ladder at runtime: mechanical first, and no judgment pass at
+  all when a pattern already found an error.** Paying a model to judge code
+  that fails a linter-tier rule is the same waste the enforcement ladder exists
+  to prevent, one layer down.
+- **Stop runs the paid tiers only when it can tell what changed.** Outside a git
+  repo there is no working-tree scope, and judging the whole repo on every turn
+  is a surprise on someone's bill. Mechanical still runs; judgment does not.
+- **Nothing that writes a ledger may run from a hook that can fire
+  concurrently.** PostToolUse fires inside subagents as well as the main
+  conversation, and parallel subagents have no documented ordering, so two
+  copies can run at once. The mechanical tier is safe there because it is
+  stateless and read-only. The judgment tiers write `.qa/rules.json` and
+  `.qa/contracts.json`, and a lost write there is a verdict silently discarded
+  from a committed file, so they belong only in `Stop` — which fires once, for
+  the main agent, at the end of a turn.
+- **Stdin parsing stays at the CLI boundary.** `runHook` and `runStop` are pure
+  functions of cwd and options so their tests never wait on a pipe that may not
+  close.
 - **Narrow by intersection, never by substitution.** Any scope a caller supplies
   (staged paths, the edited file) goes through `selectFiles`, which intersects
   it with the globbed set so the ignore list and the rules' own triggers still

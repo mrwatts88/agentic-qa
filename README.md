@@ -135,12 +135,17 @@ free because almost nothing changed.
 
 ## Where it runs
 
-Three places, all calling the same binary, so what the agent is told cannot
+Four places, all calling the same binary, so what the agent is told cannot
 drift from what the gate enforces.
 
 - **While the agent works** — a `PostToolUse` hook. Checks the file just edited
   and reports straight back to Claude, in about a quarter of a second. Always
   exits zero: it reports, it never blocks.
+- **When the agent finishes a turn** — a `Stop` hook. Checks everything the turn
+  changed, however it was changed, and refuses to let the agent finish while
+  problems remain. This is the one that steers: the agent is still holding the
+  context that produced the code, unlike in CI. It blocks once, then reports and
+  gets out of the way, so it can never trap a session.
 - **On commit** — a git hook. Mechanical tier only, so commits stay fast, free
   and offline. It lives in a committed `hooks/` directory, and the `prepare`
   script points `core.hooksPath` at it on every `npm install`, so a fresh clone

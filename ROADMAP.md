@@ -150,6 +150,25 @@ Run mechanical first and skip the judgment pass when it finds errors: the
 enforcement ladder applied at runtime, not just when a rule is written. There is
 no point paying a model to judge code that already fails a pattern.
 
+Subagents do not get a gate of their own, and cannot. `SubagentStop` fires after
+the subagent has already finished and has no decision control, so it could only
+report to something that has stopped listening. `Stop` fires for the main agent
+only. A subagent's edits are therefore caught at the end of the main turn, by
+the same working-tree scope that catches a change made in Bash — deferred, but
+not missed.
+
+That is the argument that keeps the per-edit hook alive. PostToolUse *does* fire
+inside subagents, carrying `agent_id` and `agent_type`, so it is the only
+feedback a subagent can receive while it can still act on it. Removing it, which
+looked reasonable once `Stop` could block, would leave every subagent working
+blind to the corpus for its entire run.
+
+It also fixes which tiers may run where. Parallel subagents have no documented
+ordering, so a PostToolUse hook can run concurrently with itself. The mechanical
+tier is stateless and read-only and does not care. The judgment tiers write
+committed ledgers, where a lost write is a discarded verdict, so they stay in
+`Stop`, which is single and serial by construction.
+
 Two things the contract settles, both verified against the docs rather than
 recalled. `Stop` supports no matchers, and its default timeout is 600s, so
 **latency was never the constraint here — cost is.** The 30s figure that made
@@ -390,6 +409,13 @@ topics).
   existing file. Verified end to end: in a scratch repo, `init --git-hook`
   followed by `git commit` of a file storing a token in `localStorage` is
   refused by the hook.
+- The turn-boundary call site (`agentic-qa stop`): a `Stop` hook that checks
+  everything the turn changed, blocks the agent from finishing while findings
+  stand, and blocks at most once per turn. Mechanical first, with the judgment
+  tiers skipped entirely when a pattern already found an error, and skipped
+  outside a git repo where there is no way to tell what changed. It gates
+  through the `decision` field and always exits zero, so a crash reports rather
+  than trapping the turn.
 
 ---
 

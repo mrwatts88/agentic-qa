@@ -10,6 +10,7 @@ import { groundAll } from "./contracts/mutate.js";
 import { loadLedger, saveLedger } from "./contracts/ledger.js";
 import { loadRules } from "./rules/load.js";
 import { runHook, readHookPayload } from "./hook.js";
+import { runStop } from "./stop.js";
 import { runInit, installHooks, prepareLine } from "./init.js";
 import { selectFiles } from "./rules/select.js";
 import { runMechanical } from "./rules/mechanical.js";
@@ -22,6 +23,7 @@ Usage:
   agentic-qa init [options]         write qa.config.yaml; add call sites only if asked
   agentic-qa install-hooks          point core.hooksPath at hooks/ (run from prepare)
   agentic-qa hook                   PostToolUse hook: report on what just changed
+  agentic-qa stop                   Stop hook: check the whole turn, block once on findings
   agentic-qa rules [options]        check changed code against the rules corpus
   agentic-qa rules --llm            also run the rules that need a model's judgment
   agentic-qa contracts [options]    verify tests assert what their descriptions claim
@@ -58,6 +60,7 @@ async function main(): Promise<number> {
       staged: { type: "boolean", default: false },
       "git-hook": { type: "boolean", default: false },
       "claude-hook": { type: "boolean", default: false },
+      mechanical: { type: "boolean", default: false },
       json: { type: "boolean", default: false },
       model: { type: "string" },
       concurrency: { type: "string" },
@@ -85,6 +88,16 @@ async function main(): Promise<number> {
   if (command === "hook") {
     const { filePath } = await readHookPayload();
     return runHook(cwd, filePath);
+  }
+
+  // Also always exits zero: it blocks through the decision field, not the exit
+  // code, so a crash here can never trap a turn.
+  if (command === "stop") {
+    const { stopHookActive } = await readHookPayload();
+    return runStop(cwd, {
+      stopHookActive: stopHookActive ?? false,
+      judgment: !values.mechanical,
+    });
   }
 
   // Runs from the repo's prepare script on every npm install, so it must stay

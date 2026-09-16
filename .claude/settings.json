@@ -12,6 +12,18 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node dist/cli.js stop --mechanical",
+            "timeout": 300,
+            "statusMessage": "agentic-qa: checking the turn"
+          }
+        ]
+      }
     ]
   }
 }

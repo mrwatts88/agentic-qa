@@ -65,7 +65,10 @@ export function changedFiles(cwd: string): string[] | undefined {
  * pure function of (cwd, path) and its tests never touch stdin. A test that
  * waits on a pipe that may never close is a test that hangs.
  */
-export async function readHookPayload(): Promise<{ filePath?: string }> {
+export async function readHookPayload(): Promise<{
+  filePath?: string;
+  stopHookActive?: boolean;
+}> {
   if (process.stdin.isTTY) return {};
 
   const raw = await new Promise<string>((done) => {
@@ -86,8 +89,14 @@ export async function readHookPayload(): Promise<{ filePath?: string }> {
   if (!raw.trim()) return {};
 
   try {
-    const path = JSON.parse(raw)?.tool_input?.file_path;
-    return typeof path === "string" ? { filePath: path } : {};
+    const payload = JSON.parse(raw);
+    const path = payload?.tool_input?.file_path;
+    return {
+      ...(typeof path === "string" ? { filePath: path } : {}),
+      // Stop only. True when a Stop hook has already blocked this turn, which
+      // is the flag that keeps a blocking hook from trapping the session.
+      stopHookActive: payload?.stop_hook_active === true,
+    };
   } catch {
     return {};
   }

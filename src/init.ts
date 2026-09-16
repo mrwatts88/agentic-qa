@@ -68,6 +68,21 @@ function claudeSettings(runner: string): string {
               ],
             },
           ],
+          // No matcher: Stop fires once when the agent finishes a turn. This is
+          // the one that can gate, and the one that sees changes the per-edit
+          // hook's Edit|Write matcher never observes.
+          Stop: [
+            {
+              hooks: [
+                {
+                  type: "command",
+                  command: `${runner} stop`,
+                  timeout: 300,
+                  statusMessage: "agentic-qa: checking the turn",
+                },
+              ],
+            },
+          ],
         },
       },
       null,
