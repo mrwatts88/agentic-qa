@@ -39,6 +39,9 @@ grounding needs.
 - `src/rules/load.ts` — reads and validates the corpus, strictly.
 - `src/rules/route.ts` — which rules apply to which files.
 - `src/rules/mechanical.ts` — runs the pattern tier.
+- `src/rules/llm.ts` — runs the judgment tier, with its own cached ledger.
+- `src/pool.ts` — shared bounded concurrency. Not for mutations, which must
+  stay serial.
 - `test/` — unit tests for the deterministic parts. Anything that talks to a
   model is covered by the fixture corpora instead.
 
@@ -76,6 +79,12 @@ grounding needs.
   in a `finally`, always.
 - **Mutation grounding edits the implementation, never a test.** A test edited
   to pass proves nothing.
+- **The llm tier is opt-in (`--llm`) and never runs in a git hook.** It costs
+  money and needs the network. The mechanical tier is what gates a commit.
+- **An llm rule must be able to answer `not-applicable`.** Routing hands a rule
+  every file its globs match, and most are irrelevant to it. Forcing a binary
+  answer manufactures false positives. Any new llm rule needs fixture cases
+  asserting it stays quiet about files it has nothing to say about.
 - **Every rule keeps a working `qa-ignore` escape hatch.** Without a sanctioned
   way to switch off one rule with a recorded reason, the first false positive
   gets the whole check disabled instead.

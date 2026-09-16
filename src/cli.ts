@@ -11,13 +11,15 @@ import { loadLedger, saveLedger } from "./contracts/ledger.js";
 import { loadRules } from "./rules/load.js";
 import { triggerGlobs } from "./rules/route.js";
 import { runMechanical } from "./rules/mechanical.js";
-import { evaluateRules } from "./rules/evaluate.js";
+import { evaluateRules, evaluateLlmRules } from "./rules/evaluate.js";
+import { runLlmRules } from "./rules/llm.js";
 import { glob } from "tinyglobby";
 
 const USAGE = `agentic-qa - rule enforcement for AI-written code
 
 Usage:
   agentic-qa rules [options]        check changed code against the rules corpus
+  agentic-qa rules --llm            also run the rules that need a model's judgment
   agentic-qa contracts [options]    verify tests assert what their descriptions claim
   agentic-qa mutate [options]       break the code on purpose and check the tests notice
   agentic-qa eval [options]         score the judge against known-correct verdicts
@@ -50,6 +52,7 @@ async function main(): Promise<number> {
       model: { type: "string" },
       concurrency: { type: "string" },
       expected: { type: "string" },
+      llm: { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
     },
   });
@@ -91,6 +94,24 @@ async function main(): Promise<number> {
         });
 
     const findings = runMechanical(cwd, files, rules);
+
+    // Opt-in: the llm tier costs money, so it never runs in a pre-commit hook.
+    if (values.llm) {
+      const llm = await runLlmRules(cwd, files, rules, config, values.all);
+      findings.push(...llm.findings);
+
+      if (values.expected) {
+        return evaluateLlmRules(cwd, values.expected, llm.records) ? 0 : 1;
+      }
+
+      const cost = llm.costUsd > 0 ? ` · $${llm.costUsd.toFixed(3)}` : "";
+      process.stderr.write(
+        pc.dim(
+          `llm tier: ${llm.judged} judged, ${llm.cached} cached, ` +
+            `${llm.skipped} skipped${cost}\n`,
+        ),
+      );
+    }
 
     if (values.expected) {
       return evaluateRules(cwd, values.expected, findings) ? 0 : 1;

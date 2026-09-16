@@ -1,0 +1,17 @@
+{
+  "note": "Ground truth for the llm rule tier. Each violating file is paired with a clean control that is structurally almost identical, so a rule that pattern-matches on shape rather than meaning will fail here. lib/format.ts must come back not-applicable for both rules: staying quiet about irrelevant files is a requirement, not a nicety.",
+  "expected": {
+    "be.authz.ownership-check": {
+      "api/orders.ts": "violated",
+      "api/orders-safe.ts": "ok",
+      "api/reports.ts": "not-applicable",
+      "lib/format.ts": "not-applicable"
+    },
+    "be.errors.no-silent-fallback": {
+      "api/reports.ts": "violated",
+      "api/reports-safe.ts": "ok",
+      "api/orders.ts": "not-applicable",
+      "lib/format.ts": "not-applicable"
+    }
+  }
+}

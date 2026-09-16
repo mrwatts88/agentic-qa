@@ -142,6 +142,32 @@ localStorage.setItem("authToken", token); // qa-ignore: fe.storage.no-token-in-l
 This exists because without a sanctioned escape hatch, the first false positive
 gets the whole check disabled instead of the single rule.
 
+### Rules that need judgment
+
+Some rules cannot be written as a pattern. "An endpoint must check the caller
+owns the record, not merely that they are logged in" is the classic one: agents
+implement authentication reliably and forget authorisation constantly, and the
+result looks completely correct.
+
+Those rules carry a question instead of a pattern, and `agentic-qa rules --llm`
+puts it to a model. It is opt-in because it costs money, so it never runs in a
+pre-commit hook.
+
+Each answer is one of three:
+
+- **violated** — the rule applies here and this file breaks it.
+- **ok** — the rule applies here and this file satisfies it.
+- **not-applicable** — the file has nothing to do with this rule.
+
+That third answer is the one that makes the tier usable. A rule about endpoints
+gets shown every `.ts` file in the repo, and most of them contain no endpoint.
+Without a way to say "this is not about me", a model asked for a yes or no will
+eventually invent a problem, and that noise is what gets checkers switched off.
+
+Verdicts are cached per file and per rule, keyed on the file's contents and on
+the rule's own prompt. Editing one rule's wording re-runs that rule everywhere
+and leaves every other cached verdict alone.
+
 ### Scoring the rules
 
 Same idea as scoring the judge. `fixtures/rules` holds files with known
@@ -207,8 +233,9 @@ npm run build
 Then from any repo with tests:
 
 ```
-agentic-qa rules                 # check code against the rules corpus
+agentic-qa rules                 # check code against the rules corpus (free)
 agentic-qa rules --staged        # only files staged in git
+agentic-qa rules --llm           # also run the rules that need judgment
 
 agentic-qa contracts             # check whatever changed
 agentic-qa contracts --staged    # only tests in files staged in git
@@ -288,12 +315,11 @@ cannot drift from the rules the gate enforces.
 See [ROADMAP.md](ROADMAP.md) for the full plan and the reasoning behind it.
 Short version:
 
-- **The llm tier has no runner yet.** Rules like "an endpoint must check the
-  caller owns the record, not just that they are logged in" are written down and
-  routed, but nothing executes them. Only the mechanical tier runs today.
 - A way to adopt this on a repo that already has thousands of violations,
   without everyone switching it off on day one.
 - Packaging, so it installs into any repo instead of living in this one.
+- The rest of the rules corpus. There are 14 rules today; the prose they come
+  from runs to about 34,000 words.
 
 ## Repo layout
 
@@ -305,6 +331,7 @@ src/judge.ts              the only thing that talks to a model
 src/rules/load.ts         reads and validates the corpus
 src/rules/route.ts        decides which rules apply to which files
 src/rules/mechanical.ts   runs the pattern rules
+src/rules/llm.ts          runs the rules that need judgment, and caches them
 src/contracts/extract.ts  reads tests out of source files
 src/contracts/ledger.ts   hashing and the saved verdicts
 src/contracts/mutate.ts   mutation grounding
@@ -312,6 +339,7 @@ test/                     unit tests for the deterministic parts
 fixtures/sample/          broken tests with known-correct verdicts
 fixtures/runnable/        a green suite, for mutation grounding
 fixtures/rules/           known violations plus clean control files
+fixtures/rules-llm/       near-identical violating and clean pairs
 ```
 
 Target stack for the repos this checks: React/Vite/TypeScript/TanStack Query,

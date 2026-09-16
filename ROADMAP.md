@@ -92,6 +92,14 @@ Every rule also keeps a working `qa-ignore` escape hatch. Without a sanctioned
 way to switch off one rule with a recorded reason, the first false positive gets
 the whole check disabled instead.
 
+### An llm rule must be allowed to say "not applicable"
+
+Routing sends a rule every file matching its globs, and most of them have
+nothing to do with it. A model forced to answer only ok or violated about
+irrelevant code will eventually answer violated. The third verdict is what keeps
+the tier quiet enough to be worth reading, and the fixture corpus asserts it
+explicitly rather than leaving it to chance.
+
 ### A judgment is not evidence until an experiment says so
 
 `agentic-qa mutate` breaks the implementation on purpose and checks the test
@@ -161,35 +169,25 @@ topics).
   `fixtures/rules`. 8/8 known violations found, 0 false positives on the clean
   control files.
 - A seed corpus of 14 rules across frontend, backend, testing and security.
+- The llm tier (`agentic-qa rules --llm`): the rule judge, per-file and
+  per-prompt caching, and scoring against `fixtures/rules-llm`. 8/8 with no
+  false positives, including telling apart violating and clean files that differ
+  only by an ownership check or by rethrowing instead of returning an empty
+  list.
 - Unit tests for this tool's own deterministic parts, in `test/`.
 
 ---
 
 ## Next
 
-### 1. Run the llm tier
-
-The gap that matters most right now. Rules like `be.authz.ownership-check` and
-`be.errors.no-silent-fallback` are written down, routed, and carry their
-prompts, but **nothing executes them**. Only the mechanical tier runs.
-
-The pieces already exist: `src/judge.ts` knows how to ask a model a structured
-question cheaply, and routing already narrows which rules apply to a changed
-file. What is missing is the runner that feeds a changed hunk plus its
-applicable llm rules to the judge, and the caching so the same unchanged code is
-not re-judged on every commit.
-
-Needs its own fixture corpus with known verdicts before it can be trusted,
-exactly as the contract judge did.
-
-### 2. Adoption on an existing repo: the baseline ratchet
+### 1. Adoption on an existing repo: the baseline ratchet
 
 Turning a full corpus on an existing codebase produces thousands of violations
 and gets switched off the same afternoon. Snapshot the existing violations, fail
 only on new ones, and require the count to trend down. Every successful linter
 adoption works this way. It has to be designed in, not bolted on.
 
-### 3. Distribution
+### 2. Distribution
 
 The thing that decides whether this is a system or a one-off. A repo should hold
 only `qa.config.yaml` and `.qa/`.
@@ -200,15 +198,15 @@ only `qa.config.yaml` and `.qa/`.
 - Both depend on the same versioned rules package, so updating rules centrally
   updates every repo.
 
-### 4. Bulk-load the rules corpus
+### 3. Bulk-load the rules corpus
 
-Once the llm tier runs and the ratchet exists, convert the rest of
+Once the ratchet exists, convert the rest of
 `~/code/full-stack-swe` into structured rules. Each one needs a violating
 fixture and a clean control. Expect a meaningful fraction of the prose to be
 background knowledge rather than checkable rules; that part does not belong in
 the corpus.
 
-### 5. Mutation grounding, second pass
+### 4. Mutation grounding, second pass
 
 Working, but narrow. Assumes vitest and finds the implementation by following
 the test file's relative imports. Worth extending to other runners and to tests

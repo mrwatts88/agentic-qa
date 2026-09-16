@@ -31,6 +31,13 @@ export interface QaConfig {
     packs: string[];
     /** Extra rule directories, relative to the repo, for local conventions. */
     paths: string[];
+    llm: {
+      /**
+       * Files above this size are skipped rather than judged: they cost a lot
+       * and get judged badly. Reported, never silently dropped.
+       */
+      maxFileBytes: number;
+    };
   };
 }
 
@@ -50,6 +57,9 @@ export const DEFAULT_CONFIG: QaConfig = {
   rules: {
     packs: [],
     paths: [],
+    llm: {
+      maxFileBytes: 60_000,
+    },
   },
 };
 
@@ -65,7 +75,11 @@ export function loadConfig(cwd: string): QaConfig {
       ...raw,
       judge: { ...DEFAULT_CONFIG.judge, ...(raw.judge ?? {}) },
       mutation: { ...DEFAULT_CONFIG.mutation, ...(raw.mutation ?? {}) },
-      rules: { ...DEFAULT_CONFIG.rules, ...(raw.rules ?? {}) },
+      rules: {
+        ...DEFAULT_CONFIG.rules,
+        ...(raw.rules ?? {}),
+        llm: { ...DEFAULT_CONFIG.rules.llm, ...(raw.rules?.llm ?? {}) },
+      },
     };
   }
   return DEFAULT_CONFIG;

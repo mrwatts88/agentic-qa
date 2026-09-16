@@ -1,0 +1,107 @@
+{
+  "version": 1,
+  "records": {
+    "be.authz.ownership-check\u0000api/orders-safe.ts": {
+      "ruleId": "be.authz.ownership-check",
+      "file": "api/orders-safe.ts",
+      "fileHash": "58b594c09fd24fc2",
+      "promptHash": "7b7a6d88a093b9cf",
+      "model": "sonnet",
+      "verdict": "ok",
+      "reason": "The handler loads the order by id and then checks order.customerId !== session.userId (line 24), returning 404 if the caller doesn't own the record, so it enforces ownership rather than mere authentication.",
+      "checkedAt": "2026-09-16T15:13:05.190Z"
+    },
+    "be.authz.ownership-check\u0000api/orders.ts": {
+      "ruleId": "be.authz.ownership-check",
+      "file": "api/orders.ts",
+      "fileHash": "ce164e3e41bd67c4",
+      "promptHash": "7b7a6d88a093b9cf",
+      "model": "sonnet",
+      "verdict": "violated",
+      "reason": "The handler only checks that a session exists (line 15) but never verifies the fetched order (line 19) belongs to the caller, so any logged-in user can read any order by changing the :id in the URL.",
+      "line": 19,
+      "checkedAt": "2026-09-16T15:13:04.917Z"
+    },
+    "be.authz.ownership-check\u0000api/reports-safe.ts": {
+      "ruleId": "be.authz.ownership-check",
+      "file": "api/reports-safe.ts",
+      "fileHash": "906f1fb0a8712089",
+      "promptHash": "7b7a6d88a093b9cf",
+      "model": "sonnet",
+      "verdict": "not-applicable",
+      "reason": "This file defines a plain helper function that fetches invoices and adds error logging; it is not an HTTP endpoint and shows no request/session handling at all, so there is no caller identity to check authorization against.",
+      "checkedAt": "2026-09-16T15:13:14.696Z"
+    },
+    "be.authz.ownership-check\u0000api/reports.ts": {
+      "ruleId": "be.authz.ownership-check",
+      "file": "api/reports.ts",
+      "fileHash": "f915a4d2c4d51ba6",
+      "promptHash": "7b7a6d88a093b9cf",
+      "model": "sonnet",
+      "verdict": "not-applicable",
+      "reason": "This file is a simple wrapper around fetchInvoices with no request/session handling, authentication check, or endpoint routing visible — there's nothing here to show it's an HTTP handler exposing caller identity, so the authorization-by-id rule doesn't apply to this code.",
+      "checkedAt": "2026-09-16T15:13:15.163Z"
+    },
+    "be.authz.ownership-check\u0000lib/format.ts": {
+      "ruleId": "be.authz.ownership-check",
+      "file": "lib/format.ts",
+      "fileHash": "210702f4459e2f0f",
+      "promptHash": "7b7a6d88a093b9cf",
+      "model": "sonnet",
+      "verdict": "not-applicable",
+      "reason": "This file contains only pure formatting helpers (currency/title case); there is no endpoint or record loading by id.",
+      "checkedAt": "2026-09-16T15:13:16.169Z"
+    },
+    "be.errors.no-silent-fallback\u0000api/orders-safe.ts": {
+      "ruleId": "be.errors.no-silent-fallback",
+      "file": "api/orders-safe.ts",
+      "fileHash": "58b594c09fd24fc2",
+      "promptHash": "1bc82ef17649039c",
+      "model": "sonnet",
+      "verdict": "not-applicable",
+      "reason": "There is no try/catch or error-handling logic in this file; all branches (401, 404, 200) are explicit, distinct outcomes based on actual state, not a failure being masked as success.",
+      "checkedAt": "2026-09-16T15:13:05.300Z"
+    },
+    "be.errors.no-silent-fallback\u0000api/orders.ts": {
+      "ruleId": "be.errors.no-silent-fallback",
+      "file": "api/orders.ts",
+      "fileHash": "ce164e3e41bd67c4",
+      "promptHash": "1bc82ef17649039c",
+      "model": "sonnet",
+      "verdict": "not-applicable",
+      "reason": "There is no try/catch or error-swallowing logic in this file; the only issue present is an unrelated authorization flaw explicitly called out in the header comment.",
+      "checkedAt": "2026-09-16T15:13:05.046Z"
+    },
+    "be.errors.no-silent-fallback\u0000api/reports-safe.ts": {
+      "ruleId": "be.errors.no-silent-fallback",
+      "file": "api/reports-safe.ts",
+      "fileHash": "906f1fb0a8712089",
+      "promptHash": "1bc82ef17649039c",
+      "model": "sonnet",
+      "verdict": "ok",
+      "reason": "The catch block logs the error with context and rethrows it, so the failure propagates to the caller instead of being converted into a plausible-looking success.",
+      "checkedAt": "2026-09-16T15:13:10.711Z"
+    },
+    "be.errors.no-silent-fallback\u0000api/reports.ts": {
+      "ruleId": "be.errors.no-silent-fallback",
+      "file": "api/reports.ts",
+      "fileHash": "f915a4d2c4d51ba6",
+      "promptHash": "1bc82ef17649039c",
+      "model": "sonnet",
+      "verdict": "violated",
+      "reason": "On fetch failure, the catch block returns an empty array identical to a genuine \"no invoices\" result, so the caller cannot detect the outage; it should rethrow or return an explicit error/result type instead.",
+      "line": 14,
+      "checkedAt": "2026-09-16T15:13:11.981Z"
+    },
+    "be.errors.no-silent-fallback\u0000lib/format.ts": {
+      "ruleId": "be.errors.no-silent-fallback",
+      "file": "lib/format.ts",
+      "fileHash": "210702f4459e2f0f",
+      "promptHash": "1bc82ef17649039c",
+      "model": "sonnet",
+      "verdict": "not-applicable",
+      "reason": "This file contains only pure formatting helpers with no try/catch or error handling logic at all, so the rule about masking failures does not apply.",
+      "checkedAt": "2026-09-16T15:13:19.455Z"
+    }
+  }
+}

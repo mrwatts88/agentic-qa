@@ -13,6 +13,7 @@ import {
   saveLedger,
 } from "./ledger.js";
 import { judgeContract, JUDGE_VERSION } from "../judge.js";
+import { pool } from "../pool.js";
 
 export interface CheckOptions {
   cwd: string;
@@ -29,23 +30,6 @@ export interface CheckSummary {
   unverifiable: ContractRecord[];
   costUsd: number;
   failed: boolean;
-}
-
-async function pool<T, R>(
-  items: T[],
-  limit: number,
-  fn: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const results: R[] = new Array(items.length);
-  let cursor = 0;
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (cursor < items.length) {
-      const index = cursor++;
-      results[index] = await fn(items[index]);
-    }
-  });
-  await Promise.all(workers);
-  return results;
 }
 
 /** Shared by every command that needs to know what tests exist. */

@@ -212,6 +212,89 @@ export async function judgeContract(
   };
 }
 
+const RULE_SYSTEM_PROMPT = `You audit one source file against one rule, for a production TypeScript codebase.
+
+You are given the rule, the reason it exists, and the whole file. Decide:
+
+- "not-applicable": the file contains nothing the rule is about. This is the common answer and it is not a failure. A rule about endpoints says nothing about a file with no endpoints.
+- "ok": the rule applies to something in this file, and the file satisfies it.
+- "violated": the rule applies, and the file breaks it. Name the line and say what a reader would have to change.
+
+Prefer "not-applicable" or "ok" whenever you are genuinely unsure. A rule that fires on correct code gets the entire checking system switched off, after which nothing it reports matters. A missed violation is a smaller loss than a false alarm, so do not reach for "violated" to look thorough.
+
+Judge only the rule you were given. Other problems in the file are not your business, however tempting.`;
+
+const RULE_SCHEMA = {
+  type: "object",
+  properties: {
+    verdict: {
+      type: "string",
+      enum: ["ok", "violated", "not-applicable"],
+    },
+    reason: {
+      type: "string",
+      description: "One or two sentences. For a violation, what must change.",
+    },
+    line: {
+      type: "integer",
+      description: "1-based line of the violation. Omit unless verdict is violated.",
+    },
+  },
+  required: ["verdict", "reason"],
+} as const;
+
+export interface RuleJudgement {
+  verdict: "ok" | "violated" | "not-applicable";
+  reason: string;
+  line?: number;
+  costUsd: number;
+}
+
+export async function judgeRule(
+  rule: { id: string; statement: string; rationale: string; enforcement: unknown },
+  file: string,
+  text: string,
+  config: QaConfig,
+): Promise<RuleJudgement> {
+  const prompt = (rule.enforcement as { prompt: string }).prompt;
+
+  const numbered = text
+    .split("\n")
+    .map((line, i) => `${String(i + 1).padStart(4)} | ${line}`)
+    .join("\n");
+
+  const body = [
+    `Rule: ${rule.statement}`,
+    `Why it exists: ${rule.rationale}`,
+    "",
+    `Question: ${prompt}`,
+    "",
+    `File: ${file}`,
+    "```ts",
+    numbered,
+    "```",
+  ].join("\n");
+
+  const { output, costUsd } = await invoke(
+    body,
+    RULE_SCHEMA,
+    RULE_SYSTEM_PROMPT,
+    config,
+    `rule judge (${rule.id} on ${file})`,
+  );
+
+  if (!output.verdict) {
+    throw new Error(`rule judge (${rule.id} on ${file}): no verdict in output`);
+  }
+
+  return {
+    verdict: output.verdict,
+    reason: output.reason ?? "",
+    line: typeof output.line === "number" ? output.line : undefined,
+    costUsd,
+  };
+}
+
 export interface ProposedMutation {
   file: string;
   oldStr: string;
