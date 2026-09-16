@@ -1,0 +1,12 @@
+# Config for the fixture suite. Mirrors what a real repo would commit.
+testGlobs:
+  - "**/*.{test,spec}.{ts,tsx}"
+
+judge:
+  model: haiku
+  concurrency: 4
+  maxBudgetUsd: 0.25
+
+# A description too vague to falsify is a real defect, but turning it into a
+# hard failure on day one buries a legacy repo. Off by default, ratcheted on.
+failOnUnverifiable: false

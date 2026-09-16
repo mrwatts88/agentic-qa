@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "records": {
+    "coupon.test.ts::applyCoupon > applies a percentage discount to the cart total": {
+      "id": "coupon.test.ts::applyCoupon > applies a percentage discount to the cart total",
+      "file": "coupon.test.ts",
+      "description": "applies a percentage discount to the cart total",
+      "descriptionSource": "title",
+      "descriptionHash": "56b053a5e34a9e57",
+      "bodyHash": "178bb3e0fe2e949b",
+      "verdict": "violated",
+      "reason": "The test only asserts that the result is defined, but does not verify that a discount was actually applied. An implementation that ignores the coupon and returns the original cart unchanged (e.g., `{ total: 100 }`) would pass this test despite the described behavior being completely broken.",
+      "weakestAssertion": "expect(result).toBeDefined() - This only checks that something was returned, not that a percentage discount was actually applied or calculated correctly.",
+      "suggestedMutation": "Change applyCoupon to simply return the cart unchanged without applying any discount: `return cart;`",
+      "model": "haiku",
+      "judgeVersion": 3,
+      "checkedAt": "2026-09-16T14:32:39.640Z"
+    },
+    "coupon.test.ts::applyCoupon > refuses to stack": {
+      "id": "coupon.test.ts::applyCoupon > refuses to stack",
+      "file": "coupon.test.ts",
+      "description": "Stacking two coupons is refused: the second call leaves the cart total exactly as the first coupon left it, and reports STACKING.",
+      "descriptionSource": "docblock",
+      "descriptionHash": "b7a7f0261d663bfc",
+      "bodyHash": "6f81569b8022e300",
+      "verdict": "upheld",
+      "reason": "The assertions would fail if the described behavior broke. The three assertions verify: (1) that the second coupon application fails via `expect(second.ok).toBe(false)`, (2) that the specific error is \"STACKING\" via `expect(second.error).toBe(\"STACKING\")`, and (3) that the cart state remains at 90 (the result after the first coupon) via `expect(cart.total).toBe(90)`. Together these assertions would catch realistic breakage such as allowing stacking, reporting the wrong error, the first coupon not applying, or the second attempt modifying the cart.",
+      "weakestAssertion": "expect(second.ok).toBe(false) is the weakest link—it verifies general failure but not the specific reason. However, it works in conjunction with the error check and the cart total check to fully constrain the behavior.",
+      "suggestedMutation": "Remove the second coupon's refusal logic so that both coupons apply: change the function to not check for multiple coupons and always apply discounts. Then `cart.total` would be 72, causing `expect(cart.total).toBe(90)` to fail.",
+      "model": "haiku",
+      "judgeVersion": 3,
+      "checkedAt": "2026-09-16T14:32:46.814Z"
+    },
+    "coupon.test.ts::applyCoupon > rejects an expired coupon": {
+      "id": "coupon.test.ts::applyCoupon > rejects an expired coupon",
+      "file": "coupon.test.ts",
+      "description": "rejects an expired coupon",
+      "descriptionSource": "title",
+      "descriptionHash": "4f235a88879656af",
+      "bodyHash": "00d460b8ad887585",
+      "verdict": "upheld",
+      "reason": "The description is specific and verifiable. All three assertions work together to establish that an expired coupon is rejected: the function returns a failure status with the correct error code, and the cart is not modified. If the function broke to accept expired coupons or apply them despite returning an error, at least one assertion would fail.",
+      "weakestAssertion": "expect(result.error).toBe(\"COUPON_EXPIRED\") — without this, the function could return a different error code for expired coupons and still reject them, though the specific reason would be wrong. However, all three assertions are necessary together.",
+      "suggestedMutation": "Change the applyCoupon function to accept expired coupons and apply a discount, or return { ok: true } instead of { ok: false }. Either change would cause assertion failures.",
+      "model": "haiku",
+      "judgeVersion": 3,
+      "checkedAt": "2026-09-16T14:32:56.589Z"
+    },
+    "coupon.test.ts::applyCoupon > works correctly": {
+      "id": "coupon.test.ts::applyCoupon > works correctly",
+      "file": "coupon.test.ts",
+      "description": "works correctly",
+      "descriptionSource": "title",
+      "descriptionHash": "0c09e6d57055d769",
+      "bodyHash": "f0677e5f198d74bb",
+      "verdict": "unverifiable",
+      "reason": "The description \"works correctly\" is too vague to be falsified. It does not specify what the `applyCoupon` function should do, how it should modify the cart, what the coupon code and percent parameters mean in relation to the expected output, or what success looks like beyond checking that `.ok` is true. A competent engineer cannot determine from this description what observable outcome would prove it wrong.",
+      "model": "haiku",
+      "judgeVersion": 3,
+      "checkedAt": "2026-09-16T14:32:32.465Z"
+    },
+    "coupon.test.ts::checkout > when the payment provider declines > does not create an order": {
+      "id": "coupon.test.ts::checkout > when the payment provider declines > does not create an order",
+      "file": "coupon.test.ts",
+      "description": "does not create an order",
+      "descriptionSource": "title",
+      "descriptionHash": "9d123c9cecd826eb",
+      "bodyHash": "6b38540c85ec91d0",
+      "verdict": "violated",
+      "reason": "The test only verifies that the charge function is invoked with the correct amount, but does not assert anything about order creation or non-creation. The described behavior—\"does not create an order\"—requires a positive assertion that order creation did not occur, which is completely absent from the test body.",
+      "weakestAssertion": "The single assertion `expect(charge).toHaveBeenCalledWith(100)` addresses payment processing but not the core claim about order creation.",
+      "suggestedMutation": "Modify checkout() to create an order in the database even when charge returns { declined: true }. The test would still pass because it never checks whether an order was created.",
+      "model": "haiku",
+      "judgeVersion": 3,
+      "checkedAt": "2026-09-16T14:32:48.449Z"
+    }
+  }
+}

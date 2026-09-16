@@ -1,0 +1,10 @@
+{
+  "note": "Ground truth for the judge eval. A judge config that disagrees with these is either noisy (false positives, the failure mode that kills adoption) or blind (false negatives). Both matter; false positives matter more.",
+  "expected": {
+    "coupon.test.ts::applyCoupon > rejects an expired coupon": "upheld",
+    "coupon.test.ts::applyCoupon > applies a percentage discount to the cart total": "violated",
+    "coupon.test.ts::applyCoupon > refuses to stack": "upheld",
+    "coupon.test.ts::applyCoupon > works correctly": "unverifiable",
+    "coupon.test.ts::checkout > when the payment provider declines > does not create an order": "violated"
+  }
+}

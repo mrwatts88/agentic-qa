@@ -1,0 +1,30 @@
+{
+  "name": "agentic-qa",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Rule enforcement and test-contract verification for AI-written production code",
+  "type": "module",
+  "bin": {
+    "agentic-qa": "./dist/cli.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "test": "vitest run",
+    "qa": "node dist/cli.js"
+  },
+  "dependencies": {
+    "picocolors": "^1",
+    "tinyglobby": "^0.2",
+    "typescript": "^5",
+    "yaml": "^2"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "vite": "^7.3.6",
+    "vitest": "^5.0.1"
+  }
+}
