@@ -92,6 +92,12 @@ grounding needs.
   uninstalled. Repo-wide is fast enough, but speed was never the constraint.
 - **Stdin parsing stays at the CLI boundary.** `runHook` is a pure function of
   cwd and path so its tests never wait on a pipe that may not close.
+- **Narrow by intersection, never by substitution.** Any scope a caller supplies
+  (staged paths, the edited file) goes through `selectFiles`, which intersects
+  it with the globbed set so the ignore list and the rules' own triggers still
+  apply. Handing a path straight to the checker is how staging a build artifact
+  or a deliberately-broken fixture ends up failing your own pre-commit hook.
+  Note that a unit test of `selectFiles` does not prove a call site uses it.
 - **`init` never overwrites an existing file.** An existing pre-commit hook or
   settings file belongs to whoever wrote it. Report it and leave it alone.
 - **The llm tier is opt-in (`--llm`) and never runs in a git hook.** It costs

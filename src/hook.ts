@@ -1,9 +1,8 @@
 import { execFileSync } from "node:child_process";
 import { relative, resolve, isAbsolute } from "node:path";
-import { glob } from "tinyglobby";
 import { loadConfig } from "./config.js";
 import { loadRules } from "./rules/load.js";
-import { triggerGlobs } from "./rules/route.js";
+import { selectFiles } from "./rules/select.js";
 import { runMechanical } from "./rules/mechanical.js";
 
 /**
@@ -98,27 +97,20 @@ export async function runHook(cwd: string, filePath?: string): Promise<number> {
       config.rules.packs,
     );
 
-    const all = await glob(triggerGlobs(rules), {
-      cwd,
-      ignore: config.ignore,
-      absolute: false,
-    });
-
-    // Narrowest scope that is still honest: the file just edited, else the
-    // working tree's changes, else everything.
     const edited = filePath
       ? (isAbsolute(filePath) ? relative(cwd, filePath) : filePath)
           .split("\\")
           .join("/")
       : undefined;
 
-    let files: string[];
-    if (edited && !edited.startsWith("..")) {
-      files = all.filter((f) => f === edited);
-    } else {
-      const changed = changedFiles(cwd);
-      files = changed ? all.filter((f) => changed.includes(f)) : all;
-    }
+    // Narrowest scope that is still honest: the file just edited, else the
+    // working tree's changes, else everything. selectFiles intersects rather
+    // than substitutes, so the ignore list and the rules' own triggers still
+    // apply whatever scope is asked for.
+    const scope =
+      edited && !edited.startsWith("..") ? [edited] : changedFiles(cwd);
+
+    const files = await selectFiles(cwd, config, rules, scope);
 
     const findings = runMechanical(cwd, files, rules);
     if (!findings.length) return 0;

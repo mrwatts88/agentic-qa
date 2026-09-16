@@ -11,11 +11,10 @@ import { loadLedger, saveLedger } from "./contracts/ledger.js";
 import { loadRules } from "./rules/load.js";
 import { runHook, readHookPayload } from "./hook.js";
 import { runInit } from "./init.js";
-import { triggerGlobs } from "./rules/route.js";
+import { selectFiles } from "./rules/select.js";
 import { runMechanical } from "./rules/mechanical.js";
 import { evaluateRules, evaluateLlmRules } from "./rules/evaluate.js";
 import { runLlmRules } from "./rules/llm.js";
-import { glob } from "tinyglobby";
 
 const USAGE = `agentic-qa - rule enforcement for AI-written code
 
@@ -117,14 +116,14 @@ async function main(): Promise<number> {
       config.rules.packs,
     );
 
-    // Only walk the paths some active rule actually cares about.
-    const files = values.staged
-      ? stagedFiles(cwd)
-      : await glob(triggerGlobs(rules), {
-          cwd,
-          ignore: config.ignore,
-          absolute: false,
-        });
+    // Walks only the paths some active rule cares about, and narrows by
+    // intersection so --staged still respects the ignore list.
+    const files = await selectFiles(
+      cwd,
+      config,
+      rules,
+      values.staged ? stagedFiles(cwd) : undefined,
+    );
 
     const findings = runMechanical(cwd, files, rules);
 
