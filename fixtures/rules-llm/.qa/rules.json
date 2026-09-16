@@ -41,6 +41,27 @@
       "reason": "This function has no request/session context or caller identity at all—it's an internal data-loading helper for recent orders, not an endpoint handler that loads a record by a caller-supplied id needing ownership checks.",
       "checkedAt": "2026-09-16T19:10:37.665Z"
     },
+    "be.authz.ownership-check\u0000api/orders-delete-safe.ts": {
+      "ruleId": "be.authz.ownership-check",
+      "file": "api/orders-delete-safe.ts",
+      "fileHash": "6c5f4a5f5a3782c9",
+      "promptHash": "7b7a6d88a093b9cf",
+      "model": "sonnet",
+      "verdict": "ok",
+      "reason": "The delete query is scoped by both the order id and session.accountId (deleteByIdForAccount), so a caller cannot delete another account's order merely by changing the id; ownership is enforced at the data layer.",
+      "checkedAt": "2026-09-16T20:08:42.270Z"
+    },
+    "be.authz.ownership-check\u0000api/orders-delete.ts": {
+      "ruleId": "be.authz.ownership-check",
+      "file": "api/orders-delete.ts",
+      "fileHash": "b256023cfb0e07aa",
+      "promptHash": "7b7a6d88a093b9cf",
+      "model": "sonnet",
+      "verdict": "violated",
+      "reason": "The handler only checks that a session exists (line 15) but calls orderRepo.deleteById with the raw path id (line 19) without verifying the order belongs to the caller, so any authenticated user can delete another user's order by changing the id.",
+      "line": 19,
+      "checkedAt": "2026-09-16T20:08:50.899Z"
+    },
     "be.authz.ownership-check\u0000api/orders-safe.ts": {
       "ruleId": "be.authz.ownership-check",
       "file": "api/orders-safe.ts",
@@ -141,6 +162,26 @@
       "verdict": "not-applicable",
       "reason": "There is no try/catch or error-handling logic in this file; it contains no code path that swallows a failure and returns a fallback.",
       "checkedAt": "2026-09-16T19:10:40.701Z"
+    },
+    "be.errors.no-silent-fallback\u0000api/orders-delete-safe.ts": {
+      "ruleId": "be.errors.no-silent-fallback",
+      "file": "api/orders-delete-safe.ts",
+      "fileHash": "6c5f4a5f5a3782c9",
+      "promptHash": "1bc82ef17649039c",
+      "model": "sonnet",
+      "verdict": "not-applicable",
+      "reason": "There is no try/catch block in this file; the delete handler does not swallow errors — any thrown exception from orderRepo.deleteByIdForAccount propagates normally, and a false/undefined return is explicitly mapped to a 404, not a fabricated success.",
+      "checkedAt": "2026-09-16T20:08:44.764Z"
+    },
+    "be.errors.no-silent-fallback\u0000api/orders-delete.ts": {
+      "ruleId": "be.errors.no-silent-fallback",
+      "file": "api/orders-delete.ts",
+      "fileHash": "b256023cfb0e07aa",
+      "promptHash": "1bc82ef17649039c",
+      "model": "sonnet",
+      "verdict": "not-applicable",
+      "reason": "There is no try/catch block in this file; any error thrown by orderRepo.deleteById would propagate normally rather than being swallowed.",
+      "checkedAt": "2026-09-16T20:08:48.830Z"
     },
     "be.errors.no-silent-fallback\u0000api/orders-safe.ts": {
       "ruleId": "be.errors.no-silent-fallback",
@@ -245,6 +286,26 @@
       "line": 14,
       "checkedAt": "2026-09-16T19:10:41.085Z"
     },
+    "data.orm.no-query-inside-loop\u0000api/orders-delete-safe.ts": {
+      "ruleId": "data.orm.no-query-inside-loop",
+      "file": "api/orders-delete-safe.ts",
+      "fileHash": "6c5f4a5f5a3782c9",
+      "promptHash": "27ec5edad95b390b",
+      "model": "sonnet",
+      "verdict": "not-applicable",
+      "reason": "There is no loop or per-element iteration here; a single delete call is made for one order by id, so N+1 does not apply.",
+      "checkedAt": "2026-09-16T20:08:42.527Z"
+    },
+    "data.orm.no-query-inside-loop\u0000api/orders-delete.ts": {
+      "ruleId": "data.orm.no-query-inside-loop",
+      "file": "api/orders-delete.ts",
+      "fileHash": "b256023cfb0e07aa",
+      "promptHash": "27ec5edad95b390b",
+      "model": "sonnet",
+      "verdict": "not-applicable",
+      "reason": "No loop or collection iteration exists in this handler; it performs a single deleteById call for one order, so the N+1 pattern doesn't apply.",
+      "checkedAt": "2026-09-16T20:08:50.580Z"
+    },
     "data.orm.no-query-inside-loop\u0000api/orders-safe.ts": {
       "ruleId": "data.orm.no-query-inside-loop",
       "file": "api/orders-safe.ts",
@@ -346,6 +407,26 @@
       "verdict": "not-applicable",
       "reason": "This code only performs reads (fetching orders and customers) to build a response; there is no write or decision-based mutation, so the read-then-write race condition the rule addresses cannot occur.",
       "checkedAt": "2026-09-16T19:10:41.640Z"
+    },
+    "data.tx.no-read-then-write-race\u0000api/orders-delete-safe.ts": {
+      "ruleId": "data.tx.no-read-then-write-race",
+      "file": "api/orders-delete-safe.ts",
+      "fileHash": "6c5f4a5f5a3782c9",
+      "promptHash": "fcb529af462fa479",
+      "model": "sonnet",
+      "verdict": "not-applicable",
+      "reason": "The delete is a single atomic call (deleteByIdForAccount) scoped by id and accountId; there is no separate read-then-decide-then-write sequence that concurrent callers could race on.",
+      "checkedAt": "2026-09-16T20:08:43.168Z"
+    },
+    "data.tx.no-read-then-write-race\u0000api/orders-delete.ts": {
+      "ruleId": "data.tx.no-read-then-write-race",
+      "file": "api/orders-delete.ts",
+      "fileHash": "b256023cfb0e07aa",
+      "promptHash": "fcb529af462fa479",
+      "model": "sonnet",
+      "verdict": "not-applicable",
+      "reason": "The handler performs a single atomic deleteById call with no separate read-then-decide-then-write sequence, so there's no race window the rule addresses.",
+      "checkedAt": "2026-09-16T20:08:49.859Z"
     },
     "data.tx.no-read-then-write-race\u0000api/orders-safe.ts": {
       "ruleId": "data.tx.no-read-then-write-race",

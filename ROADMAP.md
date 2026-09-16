@@ -153,6 +153,20 @@ And prose is an injection surface. A false comment can talk the judge out of a
 real finding as easily as a true one can correct it. This is the sharpest
 argument for mutation grounding: an experiment cannot be persuaded.
 
+### One finding per rule per file, which is not the same as one problem
+
+`be.authz.ownership-check` once reported an unscoped read in a service and said
+nothing about an unscoped delete in the same file. The obvious reading was that
+its prompt, which speaks of loading a record by an identifier, was blind to
+mutations. That turned out to be wrong: given a file whose only problem is an
+unscoped delete by id, the rule reports it, and names the exact call.
+
+The likelier explanation is reporting granularity. Findings are deduplicated to
+one per rule per file, so a file with two instances of the same problem shows
+the more prominent one. Worth knowing when reading a clean-looking report after
+fixing what it pointed at: fixing the named instance does not mean the rule has
+nothing further to say about that file. Re-run rather than assume.
+
 ### A judgment is not evidence until an experiment says so
 
 `agentic-qa mutate` breaks the implementation on purpose and checks the test

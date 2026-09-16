@@ -111,6 +111,11 @@ grounding needs.
   prose an injection surface. Never treat a verdict as independent confirmation
   of a claim the file itself makes. Mutation grounding is the answer where it
   matters, because an experiment cannot be talked round.
+- **Fixture prose must not name the verdict it expects.** A header reading
+  "VIOLATES be.authz.ownership-check" is evidence handed to the thing under
+  test, because the judge reads whole files. Describe the scenario and let the
+  judge work out the answer, or the corpus scores its own hints. The older
+  llm fixtures still carry labelled headers and should be reworded.
 - **An llm rule must be able to answer `not-applicable`.** Routing hands a rule
   every file its globs match, and most are irrelevant to it. Forcing a binary
   answer manufactures false positives. Any new llm rule needs fixture cases

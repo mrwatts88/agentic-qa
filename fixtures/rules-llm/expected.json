@@ -5,7 +5,9 @@
       "api/orders.ts": "violated",
       "api/orders-safe.ts": "ok",
       "api/reports.ts": "not-applicable",
-      "lib/format.ts": "not-applicable"
+      "lib/format.ts": "not-applicable",
+      "api/orders-delete.ts": "violated",
+      "api/orders-delete-safe.ts": "ok"
     },
     "be.errors.no-silent-fallback": {
       "api/reports.ts": "violated",
