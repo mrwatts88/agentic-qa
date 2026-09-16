@@ -31,6 +31,13 @@ Most of a rules corpus is mechanical. Paying a model to check something a linter
 can check is slower, non-deterministic, and less complete. The `llm` tier is the
 fallback of last resort, not the default.
 
+The ladder named its engines from the first draft — "lint, tsc,
+dependency-cruiser, semgrep" — and then the mechanical tier was implemented as
+hand-written regexes anyway, because none of those were installed. That gap is
+now closed: `mechanical` means delegated to a real engine, and a hand-written
+pattern is what you write only when no engine covers the rule. See "Reversed: the
+mechanical tier delegates to existing scanners".
+
 ### Rule routing, not one big checklist
 
 Handing a model 200 rules gets a shallow pass on a dozen of them. Changed file
@@ -64,7 +71,7 @@ A repo that keeps its own copy of the corpus is a repo whose rules drift, which
 is the problem this exists to solve. Project-local packs are additive, for
 genuinely local conventions.
 
-### Three call sites, one CLI
+### Four call sites, one CLI
 
 Agent hooks, git hooks, and CI all invoke the same binary. Never fork the logic
 per call site, or the rules the agent is told about drift from the rules the
@@ -75,7 +82,10 @@ gate enforces.
   This is where most of the leverage is: catching it at commit is far weaker,
   because the agent has moved on.
 - **Git hooks** (lefthook) — the floor. Mechanical tier only. No model calls in
-  pre-commit: latency, cost, and it must work offline.
+  pre-commit: latency and cost. The offline half of that rule was dropped once
+  the mechanical tier started delegating to scanners that fetch rulesets, since
+  a current ruleset is worth more than a commit on a plane. Network-dependent
+  rules fail **open**: skipped with a warning, never blocking the commit.
 - **CI** — the authority. Everything, including the llm tier over the PR diff.
   The only layer that cannot be bypassed with `--no-verify`.
 - **Scheduled whole-repo audit** — a fourth cadence. Per-diff checks
@@ -331,11 +341,65 @@ closing brace of its test. Line numbers are recovered from the match offset. A
 related trap: `\s` matches newlines, so a pattern anchored with `^\s{4,}` starts
 matching on the blank line above and reports the wrong line. Use `[ \t]`.
 
-### No external scanner binaries are assumed
+### Reversed: the mechanical tier delegates to existing scanners
 
-semgrep, gitleaks, tflint, checkov and eslint are not installed here, so the
-mechanical tier is self-contained in the CLI. Delegating to those tools when
-they happen to be present is a later enhancement, never a requirement.
+This previously read "no external scanner binaries are assumed" — semgrep,
+gitleaks, tflint, checkov and eslint were not installed, so the mechanical tier
+was self-contained, and delegating was filed as a later enhancement. That was a
+reasonable way to bootstrap and a bad thing to build on, and the plan that grew
+out of it — hand-writing hundreds of regex rules — was the most expensive
+mistake still ahead of us.
+
+What the survey found, all free and local:
+
+- **Semgrep OSS** (LGPL-2.1, no account, no usage limits): ~2,800 community
+  rules covering the OWASP Top 10. Runs offline from a vendored rules directory.
+  Single-file analysis only; cross-file is the paid tier, which does not matter
+  for rules like "a handler imports the database client", visible in one file.
+- **eslint-plugin-sonarjs**: SonarJS's own JS/TS rules as an ESLint plugin, with
+  **no server**, and type-aware when paired with the typescript-eslint parser.
+- **dependency-cruiser**: purpose-built for the layering rule we hand-wrote.
+- **gitleaks** for secrets, **knip** for unused code, **tflint/checkov/trivy**
+  for Terraform, **StrykerJS** for mutation testing.
+
+22 hand-written regexes were competing with roughly 2,800 community rules plus
+Sonar's actual analyzer. A regex over whole-file text is also strictly weaker
+than AST matching with type information.
+
+The competitive read matters too, and cuts the other way from what we assumed.
+Sonar ships a Claude Code plugin whose PostToolUse hooks analyse after every
+edit — the same call site we built — so "our edge is the hooks" is no longer
+true. But it needs a SonarQube Cloud account or a self-hosted server plus a
+token; there is no standalone local mode. Community Build is free but analyses a
+single branch with no PR decoration or taint analysis, which makes it useless
+for diff gating. The free path for us is the OSS toolchain, not their platform.
+
+### The corpus asserts coverage; the tools find problems
+
+The obvious way to delegate is to make each rule name a tool rule, and report
+only those. That is wrong: it throws away ~2,800 community rules to keep 22.
+
+The opposite — run the gauntlet and take whatever it says — loses the other
+half: you can no longer answer "are we still enforcing the things we decided to
+care about?" when a preset changes or someone drops a plugin.
+
+So both, because they answer different questions. **The tools answer "what is
+wrong with this code?"** Run them broad, on recommended presets. **The corpus
+answers "what do we promise to enforce, and is that promise still kept?"** A rule
+keeps its statement, rationale and tier, and its enforcement names a tool and a
+rule id. A test then asserts that rule is actually live in the tool's config, so
+dropping a plugin fails a test that names the promises it broke. The fixture
+corpora keep working and gain that second job.
+
+Noise is handled by severity rather than by filtering:
+
+- A finding from a rule **in the corpus** is an error and blocks.
+- A finding from the gauntlet **not in the corpus** is a warning: visible, never
+  blocking.
+
+Full coverage immediately, curated gating from day one, and a promotion path — a
+tool rule that proves itself gets a corpus entry and starts blocking. That is the
+baseline ratchet, arriving as a side effect.
 
 ### The calibration target lives in a separate repo
 
@@ -365,6 +429,12 @@ the hard part (routing, caching, noise control, adoption) untouched. Build the
 machine end to end with a small rule set, prove the loop, then bulk-load from
 the prose corpus in `~/code/full-stack-swe` (about 34,000 words across twelve
 topics).
+
+Still true, but the bulk-load is much smaller than it looked. Most of that prose
+describes rules a free tool already enforces, so converting it into hand-written
+patterns would be transcription rather than leverage. Mine it for what no engine
+covers: house-specific convention, and the intent-level rules that belong in the
+judgment tier.
 
 ---
 
@@ -421,34 +491,77 @@ topics).
 
 ## Next
 
-### 1. Give mutation a trigger
+### 1. Phase 0: the first adapters, and the coverage test
 
-The other two now have somewhere to run. `contracts` and `rules --llm` belong in
-CI, which the README documents rather than generates, and the commit gate
-reaches every clone instead of only the developer who ran `init` (see "CI is
-documented, not generated" and "Hooks reach a repo the way husky's do").
+The highest-value day of work in the plan. Add an `external` enforcement kind so
+a rule can name a tool and a rule id, and an adapter layer
+(`src/rules/adapters/*.ts`) where each tool returns the existing `Finding[]`.
+`runMechanical` becomes a conductor.
 
-`agentic-qa mutate` still runs nowhere but by hand, and that is the piece of the
-original idea which is least automated. The reason is sound as far as it goes:
-it is slow and it rewrites real source files, so it cannot sit in a commit hook
-or fire after every agent edit, and running the whole suite on every push would
-be wasteful enough that someone would delete the job.
+Start with the tools that need no network and no account: **eslint** with
+typescript-eslint, eslint-plugin-sonarjs and eslint-plugin-vitest, then
+**gitleaks** and **dependency-cruiser**.
 
-The likely shape is a selection rather than a schedule: ground only the
-contracts whose verdict changed since the last run, which the committed ledger
-already knows. That turns a full re-grounding into a handful of mutations on the
-tests that just started claiming something new, cheap enough for a nightly job
-or a labelled pull request. Needs a `--changed` selection over the ledger, and a
-decision about where it is invoked from.
+Then the coverage test: for every corpus rule with `kind: external`, assert the
+named rule is actually enabled in that tool's config. This is what stops the
+corpus becoming decoration.
 
-### 2. Adoption on an existing repo: the baseline ratchet
+Everything this preserves is deliberate: one CLI and four call sites, routing,
+`qa-ignore` in one place, one report format, the ladder. The only thing deleted
+is the weakest code in the project.
+
+### 2. Phase 1: semgrep OSS
+
+Replaces the security patterns, which are nine of the 22 rules and the ones a
+regex is worst at. Vendor the rulesets so they are pinned and reviewable, and
+let network-dependent rules fail open.
+
+### 3. Phase 2: retire the superseded rules and prove parity
+
+Delete the YAML rules an engine now covers, then re-run both fixture corpora and
+`orders-admin`. This is exactly what `fixtures/rules` was built for: each rule
+already has a violating case and a clean control, so parity is measurable rather
+than asserted. A rule may only be deleted once something else demonstrably
+catches its fixture.
+
+Terraform follows the same path: tflint and checkov, never hand-written regex.
+
+### 4. Mutation grounding: adopt Stryker, then give it a trigger
+
+Two problems, and the survey solved one of them. **StrykerJS** is mature mutation
+testing for JS/TS with deterministic operators, `--incremental` backed by its own
+cache and git-like mutant matching, `--mutate` scoping down to line ranges, and a
+vitest runner with full support since v7. Our hand-rolled version is LLM-proposed
+mutations, strictly serial, vitest-only, with the subject found by following
+relative imports. For "do my tests catch bugs", Stryker wins outright.
+
+Keep the idea — a judgment is not evidence until an experiment says so — and let
+Stryker run the experiment. That also absorbs the old "second pass" item, which
+wanted other runners and occasional whole-suite runs; Stryker has both.
+
+The trigger question survives unchanged, because no tool answers it: `mutate`
+still runs nowhere but by hand. It is slow and rewrites real source files, so it
+cannot sit in a commit hook or fire after every agent edit, and running it on
+every push would be wasteful enough that someone would delete the job. The likely
+shape is a selection rather than a schedule: ground only the contracts whose
+verdict changed since the last run, which the committed ledger already knows.
+Needs a `--changed` selection over the ledger, and a decision about where it is
+invoked from.
+
+### 5. Adoption on an existing repo: the baseline ratchet
+
+Half-solved by the severity split, and made more urgent by it. Pointing the
+gauntlet at an existing repo produces far more findings than 22 hand-written
+rules ever did, so the ratchet stops being a nicety. The corpus-blocks /
+gauntlet-warns rule is the first half of it; the second half is a committed
+snapshot and a count that must trend down.
 
 Turning a full corpus on an existing codebase produces thousands of violations
 and gets switched off the same afternoon. Snapshot the existing violations, fail
 only on new ones, and require the count to trend down. Every successful linter
 adoption works this way. It has to be designed in, not bolted on.
 
-### 3. Packaging
+### 6. Packaging
 
 Mostly done. The package builds on install via `prepare`, ships `dist/` and the
 rules corpus, and has been verified by packing it, installing the tarball into a
@@ -470,7 +583,13 @@ What is left:
 - **Versioning the rules corpus separately** from the tool, so rules can be
   updated without shipping a new binary, and a repo can pin them.
 
-### 4. Bulk-load the rules corpus
+### 7. Mine the prose for what no engine covers
+
+Rescoped by the delegation turn: this was "bulk-load the rules corpus", and most
+of the corpus is now somebody else's job. What is left is house-specific
+convention and the broad, intent-level rules that only the judgment tier can
+enforce. The measured holes below still describe where the corpus is thin, but
+the answer to most of them is now "enable a ruleset", not "write a pattern".
 
 Where the holes are, measured rather than guessed. Of 22 rules: nine come from
 the auth and security chapter, three each from frontend, data and testing, two
@@ -491,13 +610,30 @@ fixture and a clean control. Expect a meaningful fraction of the prose to be
 background knowledge rather than checkable rules; that part does not belong in
 the corpus.
 
-### 5. Mutation grounding, second pass
+### 8. The judgment tier is the part with no free incumbent
 
-Working, but narrow. Assumes vitest and finds the implementation by following
-the test file's relative imports. Worth extending to other runners and to tests
-whose subject is reached less directly. Also worth occasionally running the
-whole suite rather than one test, to catch a mutation that breaks something
-other than its target.
+Not a task so much as a reminder of where the remaining original work is, now
+that the mechanical tier is delegated.
+
+Semgrep Assistant and Sonar's AI CodeFix both point a model at **triage and
+repair of findings a deterministic engine already produced**. Neither uses one as
+a primary finder. The rules that need judgment are broad and intent-level, and
+engines cannot reach them for structural reasons rather than for want of effort:
+whether a handler checks the caller *owns* the record (no pattern knows which
+field is the tenant key, or that the check lives one layer down), whether a catch
+block hides a failure (a swallowed error and a deliberate fallback are
+syntactically identical), whether this is the fourth way the codebase validates
+something.
+
+That is not a guess: the judgment tier found a real IDOR in `orders-admin` that
+nobody planted. Test contracts are in the same position — the adjacent art is
+test-smell detection, which finds missing or unexecuted assertions structurally,
+and none of it judges whether assertions would fail if the described behaviour
+broke.
+
+Delegation makes this tier better, not smaller. Routing stops spending model
+budget on work a linter does, which is the enforcement ladder finally working as
+designed.
 
 ---
 

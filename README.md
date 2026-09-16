@@ -69,6 +69,15 @@ Most rules are patterns, and a pattern beats a model at pattern-matching. The
 `llm` tier is for what a pattern cannot express: does this handler check the
 caller *owns* the record, does this catch block hide a failure.
 
+> **Where this is heading.** The patterns above are hand-written, and they are
+> being replaced by the free tools that do this better — eslint with
+> eslint-plugin-sonarjs, semgrep OSS, dependency-cruiser, gitleaks. The corpus
+> stays, but as the record of what this repo promises to enforce and a test that
+> the promise is still wired up, rather than as the engine. The judgment tier is
+> unaffected; it is the part no free tool covers. See
+> [ROADMAP.md](ROADMAP.md) — "Reversed: the mechanical tier delegates to existing
+> scanners". This section describes what ships today.
+
 ```
 ERROR api/handlers.ts:4
   Import the database client only inside the repository layer. [be.layer.no-db-client-outside-repository]

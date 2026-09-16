@@ -64,11 +64,24 @@ grounding needs.
   enforce it: `mechanical` (lint, tsc, dependency-cruiser, semgrep) before
   `llm` before `human`. Paying a model to do a linter's job is strictly worse.
   A rule that cannot name its enforcement is not a rule yet.
+- **`mechanical` means delegated to a real engine.** eslint with
+  eslint-plugin-sonarjs, semgrep OSS, dependency-cruiser, gitleaks, tflint. A
+  hand-written pattern is what you write only when no engine covers the rule,
+  never the default: 22 regexes do not compete with ~2,800 community rules, and
+  whole-file regex is strictly weaker than AST matching with type information.
+- **The corpus asserts coverage; the tools find the problems.** The corpus is not
+  a filter on tool output — filtering to it would discard thousands of rules to
+  keep ours. Run the tools broad. A corpus rule names a tool and rule id, and a
+  test asserts that rule is still live in the tool's config, so dropping a plugin
+  fails a test naming the promises it broke. Findings from corpus rules are
+  errors and block; findings from the gauntlet are warnings and never block.
 - **One CLI, four call sites.** The per-edit hook, the turn-boundary hook, git
   hooks, and CI all invoke this same binary. Never fork the logic per call site,
   or the rules the agent is told about drift from the rules the gate enforces.
-- **No model calls in pre-commit.** Git hooks run the mechanical tier only.
-  Commits must work offline and must not cost money.
+- **No model calls in pre-commit.** Git hooks run the mechanical tier only: a
+  commit must not cost money or wait on a model. Commits no longer have to work
+  offline — a current ruleset is worth more than that — but a rule that needs the
+  network fails **open**, skipped with a warning, never blocking the commit.
 - **All model calls go through `invoke()` in `src/judge.ts`.** Everything else
   is deterministic and unit-testable. Keep it that way, and keep the cost flags
   in one place so they cannot drift.
