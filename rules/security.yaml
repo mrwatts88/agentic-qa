@@ -37,6 +37,90 @@ rules:
       pattern: |-
         (api[_-]?key|secret|password|passwd)\s*[:=]\s*['"][^'"$\{][^'"]{7,}['"]
 
+  - id: sec.jwt.no-none-algorithm
+    statement: Never accept a JSON Web Token signed with the none algorithm.
+    tier: mechanical
+    severity: error
+    rationale: >
+      The none algorithm means the signature is not checked, so anyone can mint
+      a token claiming to be anyone. Accepting it has appeared in real breaches.
+    source: full-stack-swe/05-auth-and-security.md
+    triggers:
+      paths:
+        - "**/*.{ts,tsx,js,jsx}"
+    enforcement:
+      kind: pattern
+      flags: i
+      pattern: |-
+        algorithms?['"]?\s*:\s*\[?\s*['"]none['"]
+
+  - id: sec.password.no-fast-hash
+    statement: Hash passwords with a slow, salted algorithm such as argon2id.
+    tier: mechanical
+    severity: error
+    rationale: >
+      SHA-256 and MD5 are built to be fast, which is exactly wrong for a
+      password: a leaked table of them is brute-forced at enormous rates. Use
+      argon2id, bcrypt or scrypt, which are deliberately slow and salted.
+    source: full-stack-swe/05-auth-and-security.md
+    triggers:
+      paths:
+        - "**/*.{ts,tsx,js,jsx}"
+      excludePaths:
+        - "**/*.{test,spec}.{ts,tsx,js,jsx}"
+    enforcement:
+      kind: pattern
+      flags: i
+      # A fast hash is the right tool for cache keys and checksums. It is only
+      # wrong in a file that is dealing with passwords.
+      pattern: |-
+        createHash\(\s*['"](md5|sha1|sha256)['"]
+      # Case-insensitivity comes from the rule's own flags. JavaScript has no
+      # inline (?i) group, and writing one throws at match time.
+      requireFilePattern: |-
+        password
+
+  - id: sec.cookie.session-cookie-must-be-httponly
+    statement: Session cookies must be HttpOnly so scripts cannot read them.
+    tier: mechanical
+    severity: error
+    rationale: >
+      An HttpOnly cookie is unreadable from JavaScript, so a successful XSS
+      still cannot steal the session. Turning it off gives that protection away.
+    source: full-stack-swe/05-auth-and-security.md
+    triggers:
+      paths:
+        - "**/*.{ts,tsx,js,jsx}"
+      excludePaths:
+        - "**/*.{test,spec}.{ts,tsx,js,jsx}"
+    enforcement:
+      kind: pattern
+      flags: i
+      pattern: |-
+        httpOnly\s*:\s*false
+
+  - id: sec.cors.no-wildcard-origin-with-credentials
+    statement: Do not combine a wildcard CORS origin with credentials.
+    tier: mechanical
+    severity: error
+    rationale: >
+      A wildcard origin is ordinary for a public read-only API. Combined with
+      credentials it invites any site to make authenticated requests as your
+      logged-in users and read the replies.
+    source: full-stack-swe/05-auth-and-security.md
+    triggers:
+      paths:
+        - "**/*.{ts,tsx,js,jsx}"
+      excludePaths:
+        - "**/*.{test,spec}.{ts,tsx,js,jsx}"
+    enforcement:
+      kind: pattern
+      flags: i
+      pattern: |-
+        origin\s*:\s*['"]\*['"]
+      requireFilePattern: |-
+        credentials\s*:\s*true
+
   - id: sec.no-world-open-security-group
     statement: Do not open a security group to the whole internet.
     tier: mechanical

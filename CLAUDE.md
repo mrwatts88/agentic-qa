@@ -113,6 +113,17 @@ grounding needs.
   one.** `fixtures/rules` exists to prove a rule stays silent on correct code
   that contains the same construct. A rule with no clean control has not been
   shown to be safe.
+- **A clean control must be clean against every rule, not only the one it
+  demonstrates.** The first data-pack control sat outside `repositories/`, so
+  importing the database client correctly tripped the layering rule and read as
+  a false positive. Place controls where they satisfy the whole corpus.
+- **A file-level companion pattern matches prose as readily as code.** A clean
+  control that names the word `requireFilePattern` looks for, even in a comment
+  explaining itself, will trip the rule it documents.
+- **Validate every regex a rule carries at load time**, not just the main
+  pattern. A companion pattern that only compiles when it first meets a
+  matching file is a rule everyone believes is protecting them until it throws.
+  JavaScript has no inline `(?i)` group; case-insensitivity comes from `flags`.
 - **False positives are the thing that kills this system.** A judge that cries
   wolf on good tests gets switched off within a fortnight, and then the clean
   runs mean nothing. Weigh a false positive far more heavily than a miss, and

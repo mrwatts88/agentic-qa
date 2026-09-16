@@ -337,8 +337,9 @@ Short version:
 - A way to adopt this on a repo that already has thousands of violations,
   without everyone switching it off on day one.
 - Packaging, so it installs into any repo instead of living in this one.
-- The rest of the rules corpus. There are 14 rules today; the prose they come
-  from runs to about 34,000 words.
+- The rest of the rules corpus. There are 22 rules today across frontend,
+  backend, data, testing and security; the prose they come from runs to about
+  34,000 words.
 
 ## Repo layout
 

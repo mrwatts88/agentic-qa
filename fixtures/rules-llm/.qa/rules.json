@@ -1,6 +1,46 @@
 {
   "version": 1,
   "records": {
+    "be.authz.ownership-check\u0000api/booking-safe.ts": {
+      "ruleId": "be.authz.ownership-check",
+      "file": "api/booking-safe.ts",
+      "fileHash": "06f50f41714b4073",
+      "promptHash": "7b7a6d88a093b9cf",
+      "model": "sonnet",
+      "verdict": "not-applicable",
+      "reason": "This function books a seat against a shared slot inventory; it does not load a specific user-owned record by id for the caller to read or act on, so the ownership-check rule doesn't apply here.",
+      "checkedAt": "2026-09-16T19:10:21.080Z"
+    },
+    "be.authz.ownership-check\u0000api/booking.ts": {
+      "ruleId": "be.authz.ownership-check",
+      "file": "api/booking.ts",
+      "fileHash": "154825a73f28645f",
+      "promptHash": "7b7a6d88a093b9cf",
+      "model": "sonnet",
+      "verdict": "not-applicable",
+      "reason": "This function loads a shared seat/slot resource by slotId to book it, not a user-owned record whose access must be restricted to a specific caller; there's no HTTP/auth layer here and no per-user data being returned based on the id, so the caller-entitlement rule doesn't apply.",
+      "checkedAt": "2026-09-16T19:10:30.063Z"
+    },
+    "be.authz.ownership-check\u0000api/dashboard-safe.ts": {
+      "ruleId": "be.authz.ownership-check",
+      "file": "api/dashboard-safe.ts",
+      "fileHash": "a32890e78da4943d",
+      "promptHash": "7b7a6d88a093b9cf",
+      "model": "sonnet",
+      "verdict": "not-applicable",
+      "reason": "This is an internal data-aggregation function with no request/auth context or single-record lookup by caller-supplied id; it's not an endpoint handler subject to per-record authorization checks.",
+      "checkedAt": "2026-09-16T19:10:29.654Z"
+    },
+    "be.authz.ownership-check\u0000api/dashboard.ts": {
+      "ruleId": "be.authz.ownership-check",
+      "file": "api/dashboard.ts",
+      "fileHash": "a42fa9f331c77ce0",
+      "promptHash": "7b7a6d88a093b9cf",
+      "model": "sonnet",
+      "verdict": "not-applicable",
+      "reason": "This function has no request/session context or caller identity at all—it's an internal data-loading helper for recent orders, not an endpoint handler that loads a record by a caller-supplied id needing ownership checks.",
+      "checkedAt": "2026-09-16T19:10:37.665Z"
+    },
     "be.authz.ownership-check\u0000api/orders-safe.ts": {
       "ruleId": "be.authz.ownership-check",
       "file": "api/orders-safe.ts",
@@ -52,6 +92,46 @@
       "reason": "This file contains only pure formatting helpers (currency/title case); there is no endpoint or record loading by id.",
       "checkedAt": "2026-09-16T15:13:16.169Z"
     },
+    "be.errors.no-silent-fallback\u0000api/booking-safe.ts": {
+      "ruleId": "be.errors.no-silent-fallback",
+      "file": "api/booking-safe.ts",
+      "fileHash": "06f50f41714b4073",
+      "promptHash": "1bc82ef17649039c",
+      "model": "sonnet",
+      "verdict": "not-applicable",
+      "reason": "There is no catch block here; the code returns an explicit, documented business result (SOLD_OUT) via a normal conditional, not an error being swallowed. Any transaction failure would propagate as a thrown exception, not a masked success.",
+      "checkedAt": "2026-09-16T19:10:17.184Z"
+    },
+    "be.errors.no-silent-fallback\u0000api/booking.ts": {
+      "ruleId": "be.errors.no-silent-fallback",
+      "file": "api/booking.ts",
+      "fileHash": "154825a73f28645f",
+      "promptHash": "1bc82ef17649039c",
+      "model": "sonnet",
+      "verdict": "not-applicable",
+      "reason": "There is no try/catch block in this file; errors from repository calls simply propagate to the caller. The rule targets catch blocks that mask failures as success, which doesn't occur here.",
+      "checkedAt": "2026-09-16T19:10:22.226Z"
+    },
+    "be.errors.no-silent-fallback\u0000api/dashboard-safe.ts": {
+      "ruleId": "be.errors.no-silent-fallback",
+      "file": "api/dashboard-safe.ts",
+      "fileHash": "a32890e78da4943d",
+      "promptHash": "1bc82ef17649039c",
+      "model": "sonnet",
+      "verdict": "not-applicable",
+      "reason": "There is no try/catch or error-handling logic in this file; failures from the awaited repository calls simply propagate, so there is nothing that converts a failure into a fake success.",
+      "checkedAt": "2026-09-16T19:10:30.959Z"
+    },
+    "be.errors.no-silent-fallback\u0000api/dashboard.ts": {
+      "ruleId": "be.errors.no-silent-fallback",
+      "file": "api/dashboard.ts",
+      "fileHash": "a42fa9f331c77ce0",
+      "promptHash": "1bc82ef17649039c",
+      "model": "sonnet",
+      "verdict": "not-applicable",
+      "reason": "There is no try/catch or error-handling logic in this file; it contains no code path that swallows a failure and returns a fallback.",
+      "checkedAt": "2026-09-16T19:10:40.701Z"
+    },
     "be.errors.no-silent-fallback\u0000api/orders-safe.ts": {
       "ruleId": "be.errors.no-silent-fallback",
       "file": "api/orders-safe.ts",
@@ -102,6 +182,189 @@
       "verdict": "not-applicable",
       "reason": "This file contains only pure formatting helpers with no try/catch or error handling logic at all, so the rule about masking failures does not apply.",
       "checkedAt": "2026-09-16T15:13:19.455Z"
+    },
+    "data.orm.no-query-inside-loop\u0000api/booking-safe.ts": {
+      "ruleId": "data.orm.no-query-inside-loop",
+      "file": "api/booking-safe.ts",
+      "fileHash": "06f50f41714b4073",
+      "promptHash": "27ec5edad95b390b",
+      "model": "sonnet",
+      "verdict": "not-applicable",
+      "reason": "No loop or collection iteration exists in this file; it's a single transactional booking operation with two sequential repository calls, not an N+1 pattern.",
+      "checkedAt": "2026-09-16T19:10:15.398Z"
+    },
+    "data.orm.no-query-inside-loop\u0000api/booking.ts": {
+      "ruleId": "data.orm.no-query-inside-loop",
+      "file": "api/booking.ts",
+      "fileHash": "154825a73f28645f",
+      "promptHash": "27ec5edad95b390b",
+      "model": "sonnet",
+      "verdict": "not-applicable",
+      "reason": "There is no loop or collection iteration here; this is a single-record read/update/insert sequence in one transaction, not an N+1 pattern.",
+      "checkedAt": "2026-09-16T19:10:27.555Z"
+    },
+    "data.orm.no-query-inside-loop\u0000api/dashboard-safe.ts": {
+      "ruleId": "data.orm.no-query-inside-loop",
+      "file": "api/dashboard-safe.ts",
+      "fileHash": "a32890e78da4943d",
+      "promptHash": "27ec5edad95b390b",
+      "model": "sonnet",
+      "verdict": "ok",
+      "reason": "Both queries are batch calls outside the loops (findRecent once, findByIds once with all customerIds); the .map() calls only join in-memory data and perform no I/O per item.",
+      "checkedAt": "2026-09-16T19:10:35.776Z"
+    },
+    "data.orm.no-query-inside-loop\u0000api/dashboard.ts": {
+      "ruleId": "data.orm.no-query-inside-loop",
+      "file": "api/dashboard.ts",
+      "fileHash": "a42fa9f331c77ce0",
+      "promptHash": "27ec5edad95b390b",
+      "model": "sonnet",
+      "verdict": "violated",
+      "reason": "customerRepo.findById is awaited inside the for-loop over orders, issuing one query per order instead of a single batched lookup (e.g., findByIds).",
+      "line": 14,
+      "checkedAt": "2026-09-16T19:10:41.085Z"
+    },
+    "data.orm.no-query-inside-loop\u0000api/orders-safe.ts": {
+      "ruleId": "data.orm.no-query-inside-loop",
+      "file": "api/orders-safe.ts",
+      "fileHash": "58b594c09fd24fc2",
+      "promptHash": "27ec5edad95b390b",
+      "model": "sonnet",
+      "verdict": "not-applicable",
+      "reason": "Single findOrderById call for one route request; no loop or collection iteration with per-item queries present.",
+      "checkedAt": "2026-09-16T19:10:46.249Z"
+    },
+    "data.orm.no-query-inside-loop\u0000api/orders.ts": {
+      "ruleId": "data.orm.no-query-inside-loop",
+      "file": "api/orders.ts",
+      "fileHash": "ce164e3e41bd67c4",
+      "promptHash": "27ec5edad95b390b",
+      "model": "sonnet",
+      "verdict": "not-applicable",
+      "reason": "This handler makes a single findOrderById call per request with no loop or iteration over a collection, so there's no N+1 pattern here.",
+      "checkedAt": "2026-09-16T19:10:48.480Z"
+    },
+    "data.orm.no-query-inside-loop\u0000api/reports-safe.ts": {
+      "ruleId": "data.orm.no-query-inside-loop",
+      "file": "api/reports-safe.ts",
+      "fileHash": "906f1fb0a8712089",
+      "promptHash": "27ec5edad95b390b",
+      "model": "sonnet",
+      "verdict": "not-applicable",
+      "reason": "This is a single fetchInvoices call for one customerId, with no loop or iteration over a collection performing per-item queries.",
+      "line": 13,
+      "checkedAt": "2026-09-16T19:10:52.080Z"
+    },
+    "data.orm.no-query-inside-loop\u0000api/reports.ts": {
+      "ruleId": "data.orm.no-query-inside-loop",
+      "file": "api/reports.ts",
+      "fileHash": "f915a4d2c4d51ba6",
+      "promptHash": "27ec5edad95b390b",
+      "model": "sonnet",
+      "verdict": "not-applicable",
+      "reason": "No loop or per-item iteration exists; this is a single fetchInvoices call for one customer, not a batch/collection fetch pattern.",
+      "checkedAt": "2026-09-16T19:10:54.144Z"
+    },
+    "data.orm.no-query-inside-loop\u0000lib/format.ts": {
+      "ruleId": "data.orm.no-query-inside-loop",
+      "file": "lib/format.ts",
+      "fileHash": "210702f4459e2f0f",
+      "promptHash": "27ec5edad95b390b",
+      "model": "sonnet",
+      "verdict": "not-applicable",
+      "reason": "Pure formatting helpers with no database or repository calls; the .map here just formats strings, no per-item queries.",
+      "checkedAt": "2026-09-16T19:10:57.675Z"
+    },
+    "data.tx.no-read-then-write-race\u0000api/booking-safe.ts": {
+      "ruleId": "data.tx.no-read-then-write-race",
+      "file": "api/booking-safe.ts",
+      "fileHash": "06f50f41714b4073",
+      "promptHash": "fcb529af462fa479",
+      "model": "sonnet",
+      "verdict": "ok",
+      "reason": "The decision and write are combined in decrementIfAvailable, a conditional update guarded by availability (affected-row-count style), so concurrent callers cannot both succeed; this matches the allowed conditional-UPDATE pattern.",
+      "checkedAt": "2026-09-16T19:10:15.933Z"
+    },
+    "data.tx.no-read-then-write-race\u0000api/booking.ts": {
+      "ruleId": "data.tx.no-read-then-write-race",
+      "file": "api/booking.ts",
+      "fileHash": "154825a73f28645f",
+      "promptHash": "fcb529af462fa479",
+      "model": "sonnet",
+      "verdict": "violated",
+      "reason": "seatsAvailable is read at line 12, checked at line 14, then written unconditionally at line 18 using the stale in-memory value; two concurrent bookSeat calls under read committed can both pass the check and both decrement, overselling the seat. This must be a conditional UPDATE like `UPDATE ... SET seatsAvailable = seatsAvailable - 1 WHERE id = slotId AND seatsAvailable > 0` (checking rows affected), a unique constraint, or SELECT FOR UPDATE.",
+      "line": 18,
+      "checkedAt": "2026-09-16T19:10:24.398Z"
+    },
+    "data.tx.no-read-then-write-race\u0000api/dashboard-safe.ts": {
+      "ruleId": "data.tx.no-read-then-write-race",
+      "file": "api/dashboard-safe.ts",
+      "fileHash": "a32890e78da4943d",
+      "promptHash": "fcb529af462fa479",
+      "model": "sonnet",
+      "verdict": "not-applicable",
+      "reason": "This code only performs read queries (findRecent, findByIds) and merges results in memory; there is no write or state-changing decision, so the read-then-write race condition rule does not apply.",
+      "checkedAt": "2026-09-16T19:10:34.896Z"
+    },
+    "data.tx.no-read-then-write-race\u0000api/dashboard.ts": {
+      "ruleId": "data.tx.no-read-then-write-race",
+      "file": "api/dashboard.ts",
+      "fileHash": "a42fa9f331c77ce0",
+      "promptHash": "fcb529af462fa479",
+      "model": "sonnet",
+      "verdict": "not-applicable",
+      "reason": "This code only performs reads (fetching orders and customers) to build a response; there is no write or decision-based mutation, so the read-then-write race condition the rule addresses cannot occur.",
+      "checkedAt": "2026-09-16T19:10:41.640Z"
+    },
+    "data.tx.no-read-then-write-race\u0000api/orders-safe.ts": {
+      "ruleId": "data.tx.no-read-then-write-race",
+      "file": "api/orders-safe.ts",
+      "fileHash": "58b594c09fd24fc2",
+      "promptHash": "fcb529af462fa479",
+      "model": "sonnet",
+      "verdict": "not-applicable",
+      "reason": "This endpoint only reads and returns an order after an ownership check; there is no subsequent write based on the read, so the read-decide-write race condition the rule targets does not apply.",
+      "checkedAt": "2026-09-16T19:10:44.364Z"
+    },
+    "data.tx.no-read-then-write-race\u0000api/orders.ts": {
+      "ruleId": "data.tx.no-read-then-write-race",
+      "file": "api/orders.ts",
+      "fileHash": "ce164e3e41bd67c4",
+      "promptHash": "fcb529af462fa479",
+      "model": "sonnet",
+      "verdict": "not-applicable",
+      "reason": "This handler only reads an order and returns it; there is no read-then-decide-then-write sequence for the rule to apply to.",
+      "checkedAt": "2026-09-16T19:10:46.908Z"
+    },
+    "data.tx.no-read-then-write-race\u0000api/reports-safe.ts": {
+      "ruleId": "data.tx.no-read-then-write-race",
+      "file": "api/reports-safe.ts",
+      "fileHash": "906f1fb0a8712089",
+      "promptHash": "fcb529af462fa479",
+      "model": "sonnet",
+      "verdict": "not-applicable",
+      "reason": "This file only fetches invoices and rethrows errors on failure; there is no read-then-decide-then-write sequence or any state mutation involved.",
+      "checkedAt": "2026-09-16T19:10:50.072Z"
+    },
+    "data.tx.no-read-then-write-race\u0000api/reports.ts": {
+      "ruleId": "data.tx.no-read-then-write-race",
+      "file": "api/reports.ts",
+      "fileHash": "f915a4d2c4d51ba6",
+      "promptHash": "fcb529af462fa479",
+      "model": "sonnet",
+      "verdict": "not-applicable",
+      "reason": "This code only reads and returns invoice data (with silent error swallowing); there is no read-then-write decision logic or shared mutable state at risk of a race condition.",
+      "checkedAt": "2026-09-16T19:10:55.258Z"
+    },
+    "data.tx.no-read-then-write-race\u0000lib/format.ts": {
+      "ruleId": "data.tx.no-read-then-write-race",
+      "file": "lib/format.ts",
+      "fileHash": "210702f4459e2f0f",
+      "promptHash": "fcb529af462fa479",
+      "model": "sonnet",
+      "verdict": "not-applicable",
+      "reason": "Pure formatting helpers with no reads/writes or shared state involved.",
+      "checkedAt": "2026-09-16T19:10:55.306Z"
     }
   }
 }

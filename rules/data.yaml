@@ -1,0 +1,99 @@
+pack: data
+rules:
+  - id: data.sql.no-concatenated-query
+    statement: Build SQL with bound parameters, never by joining strings.
+    tier: mechanical
+    severity: error
+    rationale: >
+      Untrusted input becoming part of a command is the injection class, and
+      concatenation is how it happens. Parameters are not an escaping trick,
+      they keep the value out of the statement entirely.
+    source: full-stack-swe/03-data.md
+    triggers:
+      paths:
+        - "**/*.{ts,tsx,js,jsx}"
+      excludePaths:
+        - "**/*.{test,spec}.{ts,tsx,js,jsx}"
+    enforcement:
+      kind: pattern
+      flags: i
+      # Deliberately matches concatenation only. A tagged template such as
+      # drizzle's sql`select ... ${id}` binds its interpolations and is correct,
+      # so matching on ${ near SQL would condemn the right answer.
+      #
+      # The body is delimited by a backreference rather than [^'"], because
+      # concatenated SQL characteristically ends on a dangling quote
+      # ("... email = '" + value), and forbidding quotes inside the literal
+      # excluded exactly the shape this rule exists to catch.
+      pattern: |-
+        (['"])\s*(select|insert into|update|delete from)\b(?:(?!\1).)*\1\s*\+
+
+  - id: data.privacy.no-personal-data-in-logs
+    statement: Log identifiers, not personal data or credentials.
+    tier: mechanical
+    severity: error
+    rationale: >
+      Logs are a data store with weaker access control than the database, and a
+      longer reach. An email or a token in a log line is a retention problem, a
+      compliance problem, and a credential leak waiting for a log viewer.
+    source: full-stack-swe/05-auth-and-security.md
+    triggers:
+      paths:
+        - "**/*.{ts,tsx,js,jsx}"
+      excludePaths:
+        - "**/*.{test,spec}.{ts,tsx,js,jsx}"
+    enforcement:
+      kind: pattern
+      flags: i
+      pattern: |-
+        (console|logger)\.(log|info|warn|error|debug)\([^)]*\b(password|passwd|token|secret|authorization|email)\b
+
+  - id: data.tx.no-read-then-write-race
+    statement: >
+      Do not decide from a read and then write, expecting the transaction to
+      make it safe.
+    tier: llm
+    severity: error
+    rationale: >
+      Under read committed, two requests can both read "one seat left", both
+      decide to book, and both write. A transaction does not prevent this,
+      because neither sees the other's uncommitted write. A conditional update,
+      a unique constraint, or SELECT FOR UPDATE does.
+    source: full-stack-swe/03-data.md
+    triggers:
+      paths:
+        - "**/*.ts"
+      excludePaths:
+        - "**/*.{test,spec}.{ts,tsx}"
+    enforcement:
+      kind: llm
+      prompt: >
+        Does this code read a value, decide something from it, and then write
+        based on that decision, in a way that two concurrent callers could both
+        pass? Answer violated only when concurrent execution could produce a
+        wrong result. Wrapping the sequence in a transaction does not fix it. A
+        conditional UPDATE with a WHERE guard, a unique constraint, or a
+        SELECT FOR UPDATE does, so those are ok.
+
+  - id: data.orm.no-query-inside-loop
+    statement: Load related records in one query, not one per iteration.
+    tier: llm
+    severity: error
+    rationale: >
+      A query inside a loop is the N+1 problem. It is invisible against five
+      rows in development and the most common performance bug in ORM-backed
+      applications in production.
+    source: full-stack-swe/03-data.md
+    triggers:
+      paths:
+        - "**/*.ts"
+      excludePaths:
+        - "**/*.{test,spec}.{ts,tsx}"
+    enforcement:
+      kind: llm
+      prompt: >
+        Does this code issue a database query or a repository call once per
+        element of a collection, rather than fetching what it needs in one
+        query? Answer violated for a query inside a for loop, or a map whose
+        callback awaits a per-item lookup. A single query that happens to be
+        inside a loop over unrelated work is ok.

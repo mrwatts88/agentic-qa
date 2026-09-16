@@ -1,5 +1,5 @@
 {
-  "note": "Ground truth for the llm rule tier. Each violating file is paired with a clean control that is structurally almost identical, so a rule that pattern-matches on shape rather than meaning will fail here. lib/format.ts must come back not-applicable for both rules: staying quiet about irrelevant files is a requirement, not a nicety.",
+  "note": "Ground truth for the llm rule tier. Each violating file is paired with a clean control that is structurally almost identical, so a rule matching on shape rather than meaning will fail here. The booking pair differs only by moving the guard into the WHERE clause; the dashboard pair both loop, and only one does I/O inside the loop. lib/format.ts must come back not-applicable for every rule: staying quiet about irrelevant files is a requirement, not a nicety.",
   "expected": {
     "be.authz.ownership-check": {
       "api/orders.ts": "violated",
@@ -11,6 +11,18 @@
       "api/reports.ts": "violated",
       "api/reports-safe.ts": "ok",
       "api/orders.ts": "not-applicable",
+      "lib/format.ts": "not-applicable"
+    },
+    "data.tx.no-read-then-write-race": {
+      "api/booking.ts": "violated",
+      "api/booking-safe.ts": "ok",
+      "api/dashboard.ts": "not-applicable",
+      "lib/format.ts": "not-applicable"
+    },
+    "data.orm.no-query-inside-loop": {
+      "api/dashboard.ts": "violated",
+      "api/dashboard-safe.ts": "ok",
+      "api/booking.ts": "not-applicable",
       "lib/format.ts": "not-applicable"
     }
   }

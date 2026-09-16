@@ -28,6 +28,14 @@ export interface PatternEnforcement {
    * a request body only when the file also runs a validator.
    */
   unlessFilePattern?: string;
+  /**
+   * Only report when this pattern also appears somewhere in the file. The
+   * positive counterpart of `unlessFilePattern`, for rules where the construct
+   * is fine on its own and wrong only in company: a wildcard CORS origin is
+   * ordinary until credentials are enabled, and SHA-256 is a perfectly good
+   * hash until it is hashing a password.
+   */
+  requireFilePattern?: string;
 }
 
 export interface LlmEnforcement {

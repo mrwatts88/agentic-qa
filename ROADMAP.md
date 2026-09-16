@@ -198,7 +198,8 @@ topics).
   with excludes, the pattern tier, `qa-ignore`, and scoring against
   `fixtures/rules`. 8/8 known violations found, 0 false positives on the clean
   control files.
-- A seed corpus of 14 rules across frontend, backend, testing and security.
+- A corpus of 22 rules across frontend, backend, data, testing and security,
+  each with a violating fixture and a clean control.
 - The llm tier (`agentic-qa rules --llm`): the rule judge, per-file and
   per-prompt caching, and scoring against `fixtures/rules-llm`. 8/8 with no
   false positives, including telling apart violating and clean files that differ

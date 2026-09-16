@@ -8,12 +8,20 @@
     { "rule": "test.no-mocking-own-modules", "file": "tests/widget.test.ts" },
     { "rule": "test.no-conditional-logic", "file": "tests/widget.test.ts" },
     { "rule": "test.no-assertion-free-test", "file": "tests/widget.test.ts" },
-    { "rule": "sec.no-world-open-security-group", "file": "infra/main.tf" }
+    { "rule": "sec.no-world-open-security-group", "file": "infra/main.tf" },
+    { "rule": "data.sql.no-concatenated-query", "file": "data/queries.ts" },
+    { "rule": "data.privacy.no-personal-data-in-logs", "file": "data/queries.ts" },
+    { "rule": "sec.jwt.no-none-algorithm", "file": "security/auth.ts" },
+    { "rule": "sec.password.no-fast-hash", "file": "security/auth.ts" },
+    { "rule": "sec.cookie.session-cookie-must-be-httponly", "file": "security/auth.ts" },
+    { "rule": "sec.cors.no-wildcard-origin-with-credentials", "file": "security/auth.ts" }
   ],
   "clean": [
     "web/Clean.tsx",
     "api/repositories/userRepo.ts",
     "api/validated.ts",
-    "web/session.test.ts"
+    "web/session.test.ts",
+    "data/repositories/queries-safe.ts",
+    "security/auth-safe.ts"
   ]
 }

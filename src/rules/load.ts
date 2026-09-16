@@ -44,10 +44,25 @@ function validate(raw: any, file: string, index: number, pack: string): Rule {
     if (!raw.enforcement.pattern) {
       fail(file, index, `${raw.id}: pattern enforcement needs a pattern`);
     }
-    try {
-      new RegExp(raw.enforcement.pattern, raw.enforcement.flags ?? "");
-    } catch (err) {
-      fail(file, index, `${raw.id}: invalid regex: ${(err as Error).message}`);
+    // Every pattern, not just the main one. A companion pattern that only
+    // throws when it first meets a matching file is a rule everyone believes
+    // is protecting them, right up until it is not.
+    for (const field of [
+      "pattern",
+      "unlessFilePattern",
+      "requireFilePattern",
+    ] as const) {
+      const source = raw.enforcement[field];
+      if (!source) continue;
+      try {
+        new RegExp(source, raw.enforcement.flags ?? "");
+      } catch (err) {
+        fail(
+          file,
+          index,
+          `${raw.id}: invalid regex in ${field}: ${(err as Error).message}`,
+        );
+      }
     }
   } else if (kind === "llm") {
     if (!raw.enforcement.prompt) {

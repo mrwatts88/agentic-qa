@@ -43,6 +43,7 @@ describe("the bundled rule corpus", () => {
 
     expect([...packs].sort()).toEqual([
       "backend",
+      "data",
       "frontend",
       "security",
       "testing",
@@ -79,6 +80,23 @@ describe("the bundled rule corpus", () => {
     );
 
     expect(() => loadRules([join(dir, "extra")])).toThrow(/tier must be/);
+  });
+
+  /**
+   * Regression. Only the main pattern was compiled at load time, so a broken
+   * companion pattern loaded cleanly and then threw the first time it met a
+   * file it applied to. JavaScript has no inline (?i) group, which is exactly
+   * how it happened.
+   */
+  it("rejects a rule whose companion pattern is not a valid regex", () => {
+    write(
+      "extra/bad.yaml",
+      "pack: bad\nrules:\n  - id: bad.companion\n    statement: x\n    tier: mechanical\n    severity: error\n    rationale: y\n    triggers:\n      paths: ['**/*.ts']\n    enforcement:\n      kind: pattern\n      pattern: forbidden\n      requireFilePattern: '(?i)password'\n",
+    );
+
+    expect(() => loadRules([join(dir, "extra")])).toThrow(
+      /invalid regex in requireFilePattern/,
+    );
   });
 });
 
@@ -162,6 +180,39 @@ describe("the mechanical runner", () => {
     });
 
     expect(runMechanical(dir, ["a.ts"], [conditional])).toEqual([]);
+  });
+
+  /**
+   * The positive counterpart: some constructs are wrong only in company. A
+   * fast hash is right for a cache key and wrong for a password, and the file
+   * is the only context a pattern rule has to tell them apart.
+   */
+  it("stays silent when the required companion pattern is absent", () => {
+    write("a.ts", "const key = forbidden();\n");
+
+    const conditional = rule({
+      enforcement: {
+        kind: "pattern",
+        pattern: "forbidden",
+        requireFilePattern: "password",
+      },
+    });
+
+    expect(runMechanical(dir, ["a.ts"], [conditional])).toEqual([]);
+  });
+
+  it("fires when the required companion pattern is present", () => {
+    write("a.ts", "const password = input;\nconst key = forbidden();\n");
+
+    const conditional = rule({
+      enforcement: {
+        kind: "pattern",
+        pattern: "forbidden",
+        requireFilePattern: "password",
+      },
+    });
+
+    expect(runMechanical(dir, ["a.ts"], [conditional])).toHaveLength(1);
   });
 
   it("still fires when the exempting pattern is absent", () => {
