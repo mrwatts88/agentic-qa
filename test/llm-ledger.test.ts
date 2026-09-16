@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   needsRuleJudging,
+  hashFileContents,
   pruneMissing,
   loadLlmLedger,
   saveLlmLedger,
@@ -72,6 +73,42 @@ describe("needsRuleJudging", () => {
     const stale = record({ judgeVersion: RULE_JUDGE_VERSION - 1 });
 
     expect(needsRuleJudging(stale, CURRENT)).toBe(true);
+  });
+});
+
+describe("hashFileContents", () => {
+  /**
+   * The ledger is committed. Without this, a Windows checkout under autocrlf
+   * misses every cached verdict, re-judges the repo, and commits a ledger that
+   * then misses for everyone else, indefinitely.
+   */
+  it("reads a CRLF checkout as the same file as an LF one", () => {
+    const lf = "export function a() {\n  return 1;\n}\n";
+
+    expect(hashFileContents(lf.replace(/\n/g, "\r\n"))).toBe(hashFileContents(lf));
+  });
+
+  it("ignores trailing whitespace and a stray final newline", () => {
+    const clean = "const a = 1;\nconst b = 2;\n";
+    const scruffy = "const a = 1;   \nconst b = 2;\t\n\n\n";
+
+    expect(hashFileContents(scruffy)).toBe(hashFileContents(clean));
+  });
+
+  /**
+   * Deliberately NOT whitespace-insensitive: re-indenting moves the lines a
+   * cached verdict cites, and a reformat is a one-time cost rather than an
+   * ongoing one, so the cheap-looking saving is not worth the drift.
+   */
+  it("treats re-indentation as a change worth re-judging", () => {
+    const before = "function a() {\n  return 1;\n}\n";
+    const after = "function a() {\n      return 1;\n}\n";
+
+    expect(hashFileContents(after)).not.toBe(hashFileContents(before));
+  });
+
+  it("still notices a real change", () => {
+    expect(hashFileContents("return 1;")).not.toBe(hashFileContents("return 2;"));
   });
 });
 
