@@ -228,6 +228,7 @@ Safety rules, all enforced in code:
 ```
 npm install
 npm run build
+agentic-qa init      # install the git hook and the agent hook
 ```
 
 Then from any repo with tests:
@@ -307,12 +308,26 @@ Run this after any change to the model, the prompt, or the schema.
 Three places, all calling this same tool, so the rules an agent is told about
 cannot drift from the rules the gate enforces.
 
-- **While the agent works** (Claude Code hooks) — the fast loop. The agent finds
-  out it broke a rule while it still remembers why it wrote the code.
-- **On commit** (git hooks) — the floor. Mechanical checks only. Never a model
-  call here: commits must be fast, free, and work offline.
-- **In CI** — the authority. Everything, including the model checks. The only
-  layer nobody can skip.
+```
+agentic-qa init
+```
+
+That writes a `qa.config.yaml`, a git pre-commit hook, and a Claude Code hook.
+It never overwrites anything: a file that already exists is reported and left
+alone. Use `--runner` to change how the installed hooks invoke the tool.
+
+- **While the agent works** — a `PostToolUse` hook, the fast loop. After each
+  edit it checks the file that was just edited and reports anything broken
+  straight back to Claude, while it still remembers why it wrote the code. It
+  takes about a quarter of a second and always exits zero: the hook reports, it
+  never gates. It stays quiet about everything else, including violations that
+  were already committed, because nagging about code the agent never touched is
+  how a checker gets uninstalled.
+- **On commit** — a git hook, the floor. Mechanical tier only, on staged files.
+  Never a model call here: a commit has to be fast, free, and work with no
+  network.
+- **In CI** — the authority. Everything, including `agentic-qa rules --llm` and
+  the contract checker. The only layer nobody can skip with `--no-verify`.
 
 ## What is not built yet
 
@@ -336,6 +351,8 @@ src/rules/load.ts         reads and validates the corpus
 src/rules/route.ts        decides which rules apply to which files
 src/rules/mechanical.ts   runs the pattern rules
 src/rules/llm.ts          runs the rules that need judgment, and caches them
+src/hook.ts               the PostToolUse hook: reports, never gates
+src/init.ts               installs the hooks into a repo, never overwriting
 src/contracts/extract.ts  reads tests out of source files
 src/contracts/ledger.ts   hashing and the saved verdicts
 src/contracts/mutate.ts   mutation grounding

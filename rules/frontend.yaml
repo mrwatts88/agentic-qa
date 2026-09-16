@@ -13,6 +13,11 @@ rules:
     triggers:
       paths:
         - "**/*.{ts,tsx,js,jsx}"
+      # Test files write exactly these strings on purpose, as fixture data.
+      # The risk is production code shipping a token to browser storage, not a
+      # test describing that it must not.
+      excludePaths:
+        - "**/*.{test,spec}.{ts,tsx,js,jsx}"
     enforcement:
       kind: pattern
       flags: i
@@ -31,6 +36,8 @@ rules:
     triggers:
       paths:
         - "**/*.{ts,tsx,js,jsx}"
+      excludePaths:
+        - "**/*.{test,spec}.{ts,tsx,js,jsx}"
     enforcement:
       kind: pattern
       pattern: |-
@@ -48,6 +55,8 @@ rules:
     triggers:
       paths:
         - "**/*.{tsx,jsx}"
+      excludePaths:
+        - "**/*.{test,spec}.{ts,tsx,js,jsx}"
     enforcement:
       kind: pattern
       pattern: |-
@@ -64,6 +73,8 @@ rules:
     triggers:
       paths:
         - "**/*.{tsx,jsx}"
+      excludePaths:
+        - "**/*.{test,spec}.{ts,tsx,js,jsx}"
     enforcement:
       kind: pattern
       pattern: |-

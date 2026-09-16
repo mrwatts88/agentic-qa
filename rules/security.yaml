@@ -30,7 +30,7 @@ rules:
       paths:
         - "**/*.{ts,tsx,js,jsx}"
       excludePaths:
-        - "**/*.test.ts"
+        - "**/*.{test,spec}.{ts,tsx,js,jsx}"
     enforcement:
       kind: pattern
       flags: i

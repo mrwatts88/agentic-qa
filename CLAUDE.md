@@ -42,6 +42,8 @@ grounding needs.
 - `src/rules/llm.ts` — runs the judgment tier, with its own cached ledger.
 - `src/pool.ts` — shared bounded concurrency. Not for mutations, which must
   stay serial.
+- `src/hook.ts` — the PostToolUse hook. Reports to the model, never gates.
+- `src/init.ts` — installs the call sites into a repo. Never overwrites.
 - `test/` — unit tests for the deterministic parts. Anything that talks to a
   model is covered by the fixture corpora instead.
 
@@ -79,6 +81,19 @@ grounding needs.
   in a `finally`, always.
 - **Mutation grounding edits the implementation, never a test.** A test edited
   to pass proves nothing.
+- **The PostToolUse hook always exits zero.** It fires after the tool has
+  already run, so a non-zero exit cannot undo anything and only stops the turn.
+  Findings reach the model through `hookSpecificOutput.additionalContext`, which
+  is what Claude actually reads. `continueOnBlock`, `decision` and `reason` do
+  not apply to this event.
+- **The hook reports only on the file just edited**, falling back to the working
+  tree's changes when no path is given. Complaining about pre-existing
+  violations in code the agent never touched is noise, and noise gets the hook
+  uninstalled. Repo-wide is fast enough, but speed was never the constraint.
+- **Stdin parsing stays at the CLI boundary.** `runHook` is a pure function of
+  cwd and path so its tests never wait on a pipe that may not close.
+- **`init` never overwrites an existing file.** An existing pre-commit hook or
+  settings file belongs to whoever wrote it. Report it and leave it alone.
 - **The llm tier is opt-in (`--llm`) and never runs in a git hook.** It costs
   money and needs the network. The mechanical tier is what gates a commit.
 - **An llm rule must be able to answer `not-applicable`.** Routing hands a rule

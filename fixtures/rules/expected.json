@@ -13,6 +13,7 @@
   "clean": [
     "web/Clean.tsx",
     "api/repositories/userRepo.ts",
-    "api/validated.ts"
+    "api/validated.ts",
+    "web/session.test.ts"
   ]
 }

@@ -16,7 +16,7 @@ rules:
         - "**/repositories/**"
         - "**/repository/**"
         - "**/migrations/**"
-        - "**/*.test.ts"
+        - "**/*.{test,spec}.{ts,tsx}"
     enforcement:
       kind: pattern
       pattern: |-
@@ -35,7 +35,7 @@ rules:
       paths:
         - "**/*.ts"
       excludePaths:
-        - "**/*.test.ts"
+        - "**/*.{test,spec}.{ts,tsx}"
     enforcement:
       kind: pattern
       pattern: |-
@@ -59,7 +59,7 @@ rules:
       paths:
         - "**/*.ts"
       excludePaths:
-        - "**/*.test.ts"
+        - "**/*.{test,spec}.{ts,tsx}"
     enforcement:
       kind: llm
       prompt: >
@@ -82,7 +82,7 @@ rules:
       paths:
         - "**/*.ts"
       excludePaths:
-        - "**/*.test.ts"
+        - "**/*.{test,spec}.{ts,tsx}"
     enforcement:
       kind: llm
       prompt: >

@@ -9,6 +9,8 @@ import { runEval } from "./contracts/evaluate.js";
 import { groundAll } from "./contracts/mutate.js";
 import { loadLedger, saveLedger } from "./contracts/ledger.js";
 import { loadRules } from "./rules/load.js";
+import { runHook, readHookPayload } from "./hook.js";
+import { runInit } from "./init.js";
 import { triggerGlobs } from "./rules/route.js";
 import { runMechanical } from "./rules/mechanical.js";
 import { evaluateRules, evaluateLlmRules } from "./rules/evaluate.js";
@@ -18,6 +20,8 @@ import { glob } from "tinyglobby";
 const USAGE = `agentic-qa - rule enforcement for AI-written code
 
 Usage:
+  agentic-qa init [options]         install the git hook and the agent hook
+  agentic-qa hook                   PostToolUse hook: report on what just changed
   agentic-qa rules [options]        check changed code against the rules corpus
   agentic-qa rules --llm            also run the rules that need a model's judgment
   agentic-qa contracts [options]    verify tests assert what their descriptions claim
@@ -31,6 +35,7 @@ Options:
   --concurrency N     parallel judge processes
   --json              machine-readable output
   --file <path>       restrict to a single file, for cheap iteration
+  --runner <cmd>      how installed hooks invoke this tool (default: npx agentic-qa)
   --expected <path>   expectations file for eval (default: expected.json)
   -h, --help
 `;
@@ -55,6 +60,7 @@ async function main(): Promise<number> {
       expected: { type: "string" },
       llm: { type: "boolean", default: false },
       file: { type: "string" },
+      runner: { type: "string" },
       help: { type: "boolean", short: "h", default: false },
     },
   });
@@ -69,6 +75,31 @@ async function main(): Promise<number> {
 
   if (command === "eval") {
     return runEval(cwd, values.expected ?? "expected.json") ? 0 : 1;
+  }
+
+  // Always succeeds: it reports to the agent, it does not gate anything.
+  if (command === "hook") {
+    const { filePath } = await readHookPayload();
+    return runHook(cwd, filePath);
+  }
+
+  if (command === "init") {
+    const result = runInit(cwd, values.runner ?? "npx agentic-qa");
+
+    for (const path of result.written) {
+      process.stdout.write(`${pc.green("wrote")}   ${path}\n`);
+    }
+    for (const skip of result.skipped) {
+      process.stdout.write(`${pc.yellow("skipped")} ${skip.path} ${pc.dim(`(${skip.why})`)}\n`);
+    }
+    process.stdout.write(
+      pc.dim(
+        "\nThe git hook runs the free mechanical tier on commit. The agent hook\n" +
+          "reports violations in changed files back to Claude after each edit.\n" +
+          "Run the judgment rules in CI with: agentic-qa rules --llm\n",
+      ),
+    );
+    return 0;
   }
 
   if (command !== "contracts" && command !== "mutate" && command !== "rules") {

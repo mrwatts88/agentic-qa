@@ -41,6 +41,17 @@ and actually attentive.
 `excludePaths` is what makes a layering rule expressible at all: importing the
 database client is a violation in a handler and correct in a repository.
 
+### A rule that matches dangerous strings must exempt test files
+
+Tests write the exact constructs these rules look for, on purpose, to prove
+production code must not. The first version of the corpus exempted test files
+from some rules and not others, and spelled the exemption `**/*.test.ts`, which
+silently missed `.test.tsx` and `.spec.ts`. Every exclusion now uses
+`**/*.{test,spec}.{ts,tsx,js,jsx}`.
+
+The hook found this by firing on the tool's own test suite within minutes of
+being installed, which is a fair argument for installing it early.
+
 ### Every rule needs a clean control, not just a violating one
 
 A new mechanical rule is not proven by catching its violation. It is proven by
@@ -194,6 +205,10 @@ topics).
   only by an ownership check or by rethrowing instead of returning an empty
   list.
 - Unit tests for this tool's own deterministic parts, in `test/`.
+- The call sites themselves (`agentic-qa init`): a git pre-commit hook running
+  the free tier on staged files, and a Claude Code `PostToolUse` hook that
+  reports violations in changed files back to the model after every edit. It
+  never overwrites an existing file.
 
 ---
 
@@ -206,16 +221,18 @@ and gets switched off the same afternoon. Snapshot the existing violations, fail
 only on new ones, and require the count to trend down. Every successful linter
 adoption works this way. It has to be designed in, not bolted on.
 
-### 2. Distribution
+### 2. Packaging
 
-The thing that decides whether this is a system or a one-off. A repo should hold
-only `qa.config.yaml` and `.qa/`.
+`agentic-qa init` already installs the call sites into a repo, so what is left
+is getting the tool itself into a repo that is not this one.
 
-- A **Claude Code plugin** for the agent-facing half: hooks, the review
+- **Publish the CLI** so `npx agentic-qa` resolves. Today `init` has to be
+  pointed at a local build with `--runner`.
+- **A Claude Code plugin** for the agent-facing half: the hook, a review
   subagent, slash commands. Installable across repos from a marketplace.
-- An **installable CLI** for enforcement, used by git hooks and CI.
-- Both depend on the same versioned rules package, so updating rules centrally
-  updates every repo.
+- **Version the rules corpus separately** from the tool, so rules can be
+  updated centrally without shipping a new binary, and a repo can pin them.
+- A CI workflow template, since CI is the only layer nobody can skip.
 
 ### 3. Bulk-load the rules corpus
 
