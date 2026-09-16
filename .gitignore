@@ -2,6 +2,9 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+# npm pack output
+*.tgz
+
 # vitest JSON reporter output, written next to whatever root it ran against
 .vitest/
 

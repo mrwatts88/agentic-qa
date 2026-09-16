@@ -10,14 +10,20 @@
   "engines": {
     "node": ">=22"
   },
+  "files": [
+    "dist",
+    "rules",
+    "README.md",
+    "ROADMAP.md"
+  ],
   "scripts": {
+    "prepare": "npm run build",
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
     "test": "vitest run",
     "qa": "node dist/cli.js"
   },
   "dependencies": {
-    "@types/picomatch": "^4.0.3",
     "picocolors": "^1",
     "picomatch": "^4.0.7",
     "tinyglobby": "^0.2",
@@ -26,6 +32,7 @@
   },
   "devDependencies": {
     "@types/node": "^22",
+    "@types/picomatch": "^4.0.3",
     "vite": "^7.3.6",
     "vitest": "^5.0.1"
   }

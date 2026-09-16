@@ -224,16 +224,25 @@ adoption works this way. It has to be designed in, not bolted on.
 
 ### 2. Packaging
 
-`agentic-qa init` already installs the call sites into a repo, so what is left
-is getting the tool itself into a repo that is not this one.
+Mostly done. The package builds on install via `prepare`, ships `dist/` and the
+rules corpus, and has been verified by packing it, installing the tarball into a
+clean directory, and running the installed binary there: it loads all 22 rules
+from inside the package and reports correctly. A consuming repo therefore holds
+only its own `qa.config.yaml` and `.qa/` ledgers.
 
-- **Publish the CLI** so `npx agentic-qa` resolves. Today `init` has to be
-  pointed at a local build with `--runner`.
+A CI workflow template now exists in `.github/workflows/qa.yml`. Note the
+judgment tiers need `ANTHROPIC_API_KEY` there, because `claude -p` rides on
+Claude Code's OAuth locally and CI has none.
+
+What is left:
+
+- **Publishing.** A deliberate decision, not a technical gap. The package is
+  marked `private` so it cannot go out by accident. Until then, install it as a
+  git or tarball dependency.
 - **A Claude Code plugin** for the agent-facing half: the hook, a review
-  subagent, slash commands. Installable across repos from a marketplace.
-- **Version the rules corpus separately** from the tool, so rules can be
-  updated centrally without shipping a new binary, and a repo can pin them.
-- A CI workflow template, since CI is the only layer nobody can skip.
+  subagent, slash commands, installable across repos from a marketplace.
+- **Versioning the rules corpus separately** from the tool, so rules can be
+  updated without shipping a new binary, and a repo can pin them.
 
 ### 3. Bulk-load the rules corpus
 

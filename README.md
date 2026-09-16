@@ -226,10 +226,35 @@ Safety rules, all enforced in code:
 ## Quick start
 
 ```
-npm install
-npm run build
+npm install          # also builds, via the prepare script
 agentic-qa init      # install the git hook and the agent hook
 ```
+
+### Installing it in another repo
+
+It is not published to npm, so install it from the repository or from a packed
+tarball:
+
+```
+npm install --save-dev github:your-account/agentic-qa
+
+# or from a local checkout
+cd ../agentic-qa && npm pack
+npm install --save-dev ../agentic-qa/agentic-qa-0.0.1.tgz
+```
+
+Then, in the repo you want checked:
+
+```
+npx agentic-qa init
+```
+
+The rules corpus ships inside the package, so a consuming repo holds only its
+own `qa.config.yaml` and its `.qa/` ledgers. Updating the dependency updates the
+rules everywhere at once, which is the whole point of not copying them per repo.
+
+Publishing to npm is a separate, deliberate step: the package is marked
+`private` so it cannot be published by accident.
 
 Then from any repo with tests:
 

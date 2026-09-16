@@ -1,0 +1,54 @@
+# The third call site: the one nobody can skip with --no-verify.
+#
+# The git hook runs the free mechanical tier so commits stay fast and offline.
+# Everything that costs money or needs the network runs here instead.
+name: qa
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The contract checker compares against committed verdicts, and the
+          # hook needs history to tell what actually changed.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      # Install from the lockfile, not from the manifest: no lockfile means a
+      # different dependency tree on every build.
+      - run: npm ci
+
+      - run: npm run build
+
+      - run: npm test
+
+      # Free, deterministic, and the same binary the pre-commit hook runs.
+      - name: Rules, mechanical tier
+        run: node dist/cli.js rules
+
+      # The judgment tiers call a model. Locally that rides on Claude Code's
+      # OAuth, which CI does not have, so a key is required here. Both steps are
+      # skipped rather than failed when the secret is absent, so a fork's pull
+      # request still gets the free tier.
+      - name: Rules, judgment tier
+        if: ${{ env.ANTHROPIC_API_KEY != '' }}
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: node dist/cli.js rules --llm
+
+      - name: Test contracts
+        if: ${{ env.ANTHROPIC_API_KEY != '' }}
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: node dist/cli.js contracts

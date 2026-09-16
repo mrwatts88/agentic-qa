@@ -37,6 +37,10 @@ export function changedFiles(cwd: string): string[] | undefined {
     const out = execFileSync("git", ["status", "--porcelain"], {
       cwd,
       encoding: "utf8",
+      // Swallow git's stderr. Outside a repo it prints a fatal line, which is
+      // a normal fallback here, not a problem: letting it through trains
+      // people to ignore output that is sometimes real.
+      stdio: ["ignore", "pipe", "ignore"],
     });
 
     return out
