@@ -1,0 +1,199 @@
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, dirname } from "node:path";
+import type { Rule } from "../src/rules/types";
+import { loadRules } from "../src/rules/load";
+import { ruleAppliesTo, triggerGlobs, normalise } from "../src/rules/route";
+import { runMechanical } from "../src/rules/mechanical";
+
+let dir: string;
+
+function rule(overrides: Partial<Rule> = {}): Rule {
+  return {
+    id: "test.rule",
+    statement: "Do not do the thing.",
+    tier: "mechanical",
+    pack: "test",
+    severity: "error",
+    rationale: "because it breaks",
+    triggers: { paths: ["**/*.ts"] },
+    enforcement: { kind: "pattern", pattern: "forbidden" },
+    ...overrides,
+  } as Rule;
+}
+
+function write(relative: string, contents: string): void {
+  const path = join(dir, relative);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, contents);
+}
+
+beforeEach(() => {
+  dir = mkdtempSync(join(tmpdir(), "agentic-qa-rules-"));
+});
+
+afterEach(() => {
+  rmSync(dir, { recursive: true, force: true });
+});
+
+describe("the bundled rule corpus", () => {
+  it("loads without any rule failing validation", () => {
+    expect(loadRules().length).toBeGreaterThan(0);
+  });
+
+  it("gives every rule an enforcement its tier can actually run", () => {
+    for (const r of loadRules()) {
+      if (r.tier === "mechanical") expect(r.enforcement.kind).toBe("pattern");
+      if (r.tier === "llm") expect(r.enforcement.kind).toBe("llm");
+    }
+  });
+
+  it("filters to the requested packs and leaves the rest out", () => {
+    const only = loadRules([], ["testing"]);
+
+    expect(only.length).toBeGreaterThan(0);
+    expect(only.every((r) => r.pack === "testing")).toBe(true);
+  });
+
+  it("rejects a malformed rule loudly instead of silently dropping it", () => {
+    write(
+      "extra/bad.yaml",
+      "pack: bad\nrules:\n  - id: bad.rule\n    statement: x\n    tier: nonsense\n    severity: error\n    rationale: y\n    triggers:\n      paths: ['**/*']\n    enforcement:\n      kind: pattern\n      pattern: x\n",
+    );
+
+    expect(() => loadRules([join(dir, "extra")])).toThrow(/tier must be/);
+  });
+});
+
+describe("routing", () => {
+  it("applies a rule to a file its trigger glob matches", () => {
+    expect(ruleAppliesTo(rule(), "api/handlers.ts")).toBe(true);
+  });
+
+  it("does not apply a rule to a file outside its trigger glob", () => {
+    expect(ruleAppliesTo(rule(), "infra/main.tf")).toBe(false);
+  });
+
+  /**
+   * This is how a layering rule works: the same construct is a violation in a
+   * handler and correct in the repository layer.
+   */
+  it("lets an exclude glob win over a matching trigger glob", () => {
+    const layered = rule({
+      triggers: { paths: ["**/*.ts"], excludePaths: ["**/repositories/**"] },
+    });
+
+    expect(ruleAppliesTo(layered, "api/handlers.ts")).toBe(true);
+    expect(ruleAppliesTo(layered, "api/repositories/userRepo.ts")).toBe(false);
+  });
+
+  it("treats windows-style separators the same as posix ones", () => {
+    expect(normalise("api\\repositories\\userRepo.ts")).toBe(
+      "api/repositories/userRepo.ts",
+    );
+  });
+
+  it("collects the trigger globs so only relevant paths get walked", () => {
+    const globs = triggerGlobs([rule(), rule({ triggers: { paths: ["**/*.tf"] } })]);
+
+    expect(globs).toContain("**/*.ts");
+    expect(globs).toContain("**/*.tf");
+  });
+});
+
+describe("the mechanical runner", () => {
+  it("reports a file and line for a matching pattern", () => {
+    write("a.ts", "const ok = 1;\nconst bad = forbidden();\n");
+
+    const [finding] = runMechanical(dir, ["a.ts"], [rule()]);
+
+    expect(finding.ruleId).toBe("test.rule");
+    expect(finding.line).toBe(2);
+    expect(finding.excerpt).toContain("forbidden");
+  });
+
+  /**
+   * Regression. A pattern starting with \s{4,} could begin matching on the
+   * blank line above, reporting the wrong line and an empty excerpt.
+   */
+  it("reports the line the match is actually on, not a blank line above it", () => {
+    write("a.ts", "describe(() => {\n  it(() => {\n\n    if (x) {\n    }\n  });\n});\n");
+
+    const indented = rule({
+      enforcement: {
+        kind: "pattern",
+        pattern: "^[ \\t]{4,}(if|for|while)\\s*\\(",
+        flags: "m",
+      },
+    });
+    const [finding] = runMechanical(dir, ["a.ts"], [indented]);
+
+    expect(finding.line).toBe(4);
+    expect(finding.excerpt).toContain("if (x)");
+  });
+
+  it("stays silent when the file also contains the exempting pattern", () => {
+    write("a.ts", "const bad = forbidden();\nconst safe = validate(bad);\n");
+
+    const conditional = rule({
+      enforcement: {
+        kind: "pattern",
+        pattern: "forbidden",
+        unlessFilePattern: "validate\\(",
+      },
+    });
+
+    expect(runMechanical(dir, ["a.ts"], [conditional])).toEqual([]);
+  });
+
+  it("still fires when the exempting pattern is absent", () => {
+    write("a.ts", "const bad = forbidden();\n");
+
+    const conditional = rule({
+      enforcement: {
+        kind: "pattern",
+        pattern: "forbidden",
+        unlessFilePattern: "validate\\(",
+      },
+    });
+
+    expect(runMechanical(dir, ["a.ts"], [conditional])).toHaveLength(1);
+  });
+
+  it("reports a rule once per file however many times it matches", () => {
+    write("a.ts", "forbidden();\nforbidden();\nforbidden();\n");
+
+    expect(runMechanical(dir, ["a.ts"], [rule()])).toHaveLength(1);
+  });
+
+  it("skips a file no active rule applies to", () => {
+    write("main.tf", "forbidden\n");
+
+    expect(runMechanical(dir, ["main.tf"], [rule()])).toEqual([]);
+  });
+});
+
+/**
+ * Without a sanctioned way to opt out of one rule, the first false positive
+ * gets the entire check disabled instead.
+ */
+describe("the qa-ignore escape hatch", () => {
+  it("suppresses the named rule on the same line", () => {
+    write("a.ts", "const bad = forbidden(); // qa-ignore: test.rule - deliberate\n");
+
+    expect(runMechanical(dir, ["a.ts"], [rule()])).toEqual([]);
+  });
+
+  it("suppresses the named rule when the comment is on the line above", () => {
+    write("a.ts", "// qa-ignore: test.rule - deliberate\nconst bad = forbidden();\n");
+
+    expect(runMechanical(dir, ["a.ts"], [rule()])).toEqual([]);
+  });
+
+  it("does not suppress a different rule that happens to match the same line", () => {
+    write("a.ts", "const bad = forbidden(); // qa-ignore: some.other.rule\n");
+
+    expect(runMechanical(dir, ["a.ts"], [rule()])).toHaveLength(1);
+  });
+});

@@ -1,16 +1,23 @@
 #!/usr/bin/env node
 import { parseArgs } from "node:util";
 import { execFileSync } from "node:child_process";
+import { resolve } from "node:path";
 import pc from "picocolors";
 import { loadConfig } from "./config.js";
 import { checkContracts, collectTests, report } from "./contracts/check.js";
 import { runEval } from "./contracts/evaluate.js";
 import { groundAll } from "./contracts/mutate.js";
 import { loadLedger, saveLedger } from "./contracts/ledger.js";
+import { loadRules } from "./rules/load.js";
+import { triggerGlobs } from "./rules/route.js";
+import { runMechanical } from "./rules/mechanical.js";
+import { evaluateRules } from "./rules/evaluate.js";
+import { glob } from "tinyglobby";
 
 const USAGE = `agentic-qa - rule enforcement for AI-written code
 
 Usage:
+  agentic-qa rules [options]        check changed code against the rules corpus
   agentic-qa contracts [options]    verify tests assert what their descriptions claim
   agentic-qa mutate [options]       break the code on purpose and check the tests notice
   agentic-qa eval [options]         score the judge against known-correct verdicts
@@ -59,7 +66,7 @@ async function main(): Promise<number> {
     return runEval(cwd, values.expected ?? "expected.json") ? 0 : 1;
   }
 
-  if (command !== "contracts" && command !== "mutate") {
+  if (command !== "contracts" && command !== "mutate" && command !== "rules") {
     process.stderr.write(pc.red(`unknown command: ${command}\n\n`) + USAGE);
     return 1;
   }
@@ -67,6 +74,48 @@ async function main(): Promise<number> {
   const config = loadConfig(cwd);
   if (values.model) config.judge.model = values.model;
   if (values.concurrency) config.judge.concurrency = Number(values.concurrency);
+
+  if (command === "rules") {
+    const rules = loadRules(
+      config.rules.paths.map((p) => resolve(cwd, p)),
+      config.rules.packs,
+    );
+
+    // Only walk the paths some active rule actually cares about.
+    const files = values.staged
+      ? stagedFiles(cwd)
+      : await glob(triggerGlobs(rules), {
+          cwd,
+          ignore: config.ignore,
+          absolute: false,
+        });
+
+    const findings = runMechanical(cwd, files, rules);
+
+    if (values.expected) {
+      return evaluateRules(cwd, values.expected, findings) ? 0 : 1;
+    }
+
+    if (values.json) {
+      process.stdout.write(JSON.stringify(findings, null, 2) + "\n");
+    } else {
+      for (const f of findings) {
+        const tag = f.severity === "error" ? pc.red("ERROR") : pc.yellow("WARN ");
+        process.stdout.write(`${tag} ${pc.bold(f.file)}:${f.line}\n`);
+        process.stdout.write(`  ${f.statement} ${pc.dim(`[${f.ruleId}]`)}\n`);
+        process.stdout.write(`  ${pc.dim(f.excerpt)}\n\n`);
+      }
+      const errors = findings.filter((f) => f.severity === "error").length;
+      process.stdout.write(
+        pc.dim(
+          `${rules.length} rules · ${files.length} files · ` +
+            `${errors} error(s), ${findings.length - errors} warning(s)\n`,
+        ),
+      );
+    }
+
+    return findings.some((f) => f.severity === "error") ? 1 : 0;
+  }
 
   if (command === "mutate") {
     const tests = await collectTests(

@@ -1,0 +1,92 @@
+pack: backend
+rules:
+  - id: be.layer.no-db-client-outside-repository
+    statement: Import the database client only inside the repository layer.
+    tier: mechanical
+    severity: error
+    rationale: >
+      Layer boundaries only exist if something enforces them. Once a handler
+      queries the database directly, business rules and SQL interleave, and the
+      repository layer stops being the place where data access is understood.
+    source: full-stack-swe/02-backend-architecture.md
+    triggers:
+      paths:
+        - "**/*.ts"
+      excludePaths:
+        - "**/repositories/**"
+        - "**/repository/**"
+        - "**/migrations/**"
+        - "**/*.test.ts"
+    enforcement:
+      kind: pattern
+      pattern: |-
+        from\s+['"](pg|postgres|postgres\.js|drizzle-orm|kysely|knex)['"]
+
+  - id: be.validation.no-unvalidated-request-body
+    statement: Validate a request body before using it.
+    tier: mechanical
+    severity: error
+    rationale: >
+      A request body is attacker-controlled input. Reading it straight into
+      business logic trusts whatever arrived over the wire. Parse it through a
+      schema so the shape is checked once, at the edge.
+    source: full-stack-swe/05-auth-and-security.md
+    triggers:
+      paths:
+        - "**/*.ts"
+      excludePaths:
+        - "**/*.test.ts"
+    enforcement:
+      kind: pattern
+      pattern: |-
+        await\s+c\.req\.json\(\)
+      # Hono's zod validator, or any local parse, satisfies the rule.
+      unlessFilePattern: |-
+        (zValidator|\.parse\(|\.safeParse\(|validator\()
+
+  - id: be.authz.ownership-check
+    statement: >
+      An endpoint that loads a record by id must check the caller is allowed
+      that record, not merely that they are logged in.
+    tier: llm
+    severity: error
+    rationale: >
+      Agents reliably implement authentication and forget authorisation. The
+      result looks correct and passes tests, while any logged-in user can read
+      any other user's data by changing an id in the URL.
+    source: full-stack-swe/05-auth-and-security.md
+    triggers:
+      paths:
+        - "**/*.ts"
+      excludePaths:
+        - "**/*.test.ts"
+    enforcement:
+      kind: llm
+      prompt: >
+        This handler loads a record by an identifier taken from the request.
+        Does it verify that the authenticated caller is entitled to that
+        specific record, rather than only that someone is logged in? Answer
+        violated if any authenticated user could obtain another user's record by
+        changing the identifier.
+
+  - id: be.errors.no-silent-fallback
+    statement: Do not turn a failure into a plausible-looking success.
+    tier: llm
+    severity: error
+    rationale: >
+      A catch block that returns an empty list or a default object converts an
+      outage into silently missing data. Nothing alerts, the UI looks fine, and
+      the bug surfaces days later as a data problem.
+    source: full-stack-swe/12-engineering-in-the-ai-era.md
+    triggers:
+      paths:
+        - "**/*.ts"
+      excludePaths:
+        - "**/*.test.ts"
+    enforcement:
+      kind: llm
+      prompt: >
+        Does this catch block swallow a failure and return something that the
+        caller cannot distinguish from a successful result? Answer violated only
+        when the caller genuinely cannot tell, not when the fallback is an
+        explicit, documented product decision.

@@ -35,6 +35,10 @@ grounding needs.
 - `src/contracts/check.ts` — orchestration and reporting.
 - `src/contracts/mutate.ts` — mutation grounding.
 - `src/contracts/evaluate.ts` — scores the judge against known answers.
+- `rules/*.yaml` — the rules corpus, one file per area.
+- `src/rules/load.ts` — reads and validates the corpus, strictly.
+- `src/rules/route.ts` — which rules apply to which files.
+- `src/rules/mechanical.ts` — runs the pattern tier.
 - `test/` — unit tests for the deterministic parts. Anything that talks to a
   model is covered by the fixture corpora instead.
 
@@ -72,6 +76,13 @@ grounding needs.
   in a `finally`, always.
 - **Mutation grounding edits the implementation, never a test.** A test edited
   to pass proves nothing.
+- **Every rule keeps a working `qa-ignore` escape hatch.** Without a sanctioned
+  way to switch off one rule with a recorded reason, the first false positive
+  gets the whole check disabled instead.
+- **A new mechanical rule needs a clean control file, not just a violating
+  one.** `fixtures/rules` exists to prove a rule stays silent on correct code
+  that contains the same construct. A rule with no clean control has not been
+  shown to be safe.
 - **False positives are the thing that kills this system.** A judge that cries
   wolf on good tests gets switched off within a fortnight, and then the clean
   runs mean nothing. Weigh a false positive far more heavily than a miss, and

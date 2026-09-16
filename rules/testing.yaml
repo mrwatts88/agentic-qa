@@ -1,0 +1,57 @@
+pack: testing
+rules:
+  - id: test.no-mocking-own-modules
+    statement: Mock at the edge of the system, never your own modules.
+    tier: mechanical
+    severity: error
+    rationale: >
+      Mocking your own service or repository produces a suite that passes while
+      the application is broken, because every test verified its neighbour's
+      imagined behaviour rather than its actual behaviour. A relative path in a
+      mock call is the tell.
+    source: full-stack-swe/06-testing.md
+    triggers:
+      paths:
+        - "**/*.{test,spec}.{ts,tsx}"
+    enforcement:
+      kind: pattern
+      pattern: |-
+        (vi|jest)\.mock\(\s*['"]\.
+
+  - id: test.no-conditional-logic
+    statement: No conditionals or loops in a test body.
+    tier: mechanical
+    severity: warn
+    rationale: >
+      A test with an if has two tests inside it and neither is guaranteed to
+      run. A test with a loop hides which case failed. Split it, or drive it
+      with a table.
+    source: full-stack-swe/06-testing.md
+    triggers:
+      paths:
+        - "**/*.{test,spec}.{ts,tsx}"
+    enforcement:
+      kind: pattern
+      flags: m
+      # [ \t] rather than \s: \s matches newlines, so the match would start on
+      # the preceding blank line and report the wrong line number.
+      pattern: |-
+        ^[ \t]{4,}(if|for|while)\s*\(
+
+  - id: test.no-assertion-free-test
+    statement: Every test must assert something.
+    tier: mechanical
+    severity: error
+    rationale: >
+      A test that only checks the code did not throw passes for almost any
+      implementation. It reports coverage without providing safety, which is
+      worse than no test because it looks like one.
+    source: full-stack-swe/06-testing.md
+    triggers:
+      paths:
+        - "**/*.{test,spec}.{ts,tsx}"
+    enforcement:
+      kind: pattern
+      flags: i
+      pattern: |-
+        expect\([^)]*\)\.(toBeDefined|toBeTruthy|not\.toThrow)\(\)\s*;?\s*\}\)

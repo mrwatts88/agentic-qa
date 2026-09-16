@@ -1,0 +1,55 @@
+pack: security
+rules:
+  - id: sec.no-aws-access-key-id
+    statement: Never commit an AWS access key id.
+    tier: mechanical
+    severity: error
+    rationale: >
+      Credentials in source control are compromised the moment they are pushed,
+      and rotating them is the only fix. Scanners find them in public repos
+      within minutes.
+    source: full-stack-swe/11-infrastructure.md
+    triggers:
+      paths:
+        - "**/*"
+    enforcement:
+      kind: pattern
+      pattern: |-
+        AKIA[0-9A-Z]{16}
+
+  - id: sec.no-hardcoded-credential
+    statement: Do not hardcode a credential in source.
+    tier: mechanical
+    severity: error
+    rationale: >
+      Secrets belong in the environment or a secrets manager, not in a literal
+      a reader can copy. A hardcoded credential also tends to be the one nobody
+      rotates.
+    source: full-stack-swe/05-auth-and-security.md
+    triggers:
+      paths:
+        - "**/*.{ts,tsx,js,jsx}"
+      excludePaths:
+        - "**/*.test.ts"
+    enforcement:
+      kind: pattern
+      flags: i
+      pattern: |-
+        (api[_-]?key|secret|password|passwd)\s*[:=]\s*['"][^'"$\{][^'"]{7,}['"]
+
+  - id: sec.no-world-open-security-group
+    statement: Do not open a security group to the whole internet.
+    tier: mechanical
+    severity: error
+    rationale: >
+      A 0.0.0.0/0 ingress rule exposes the port to every host on the internet.
+      It is occasionally correct for a load balancer on 443 and almost never
+      correct for anything else, so it should be a deliberate, recorded choice.
+    source: full-stack-swe/11-infrastructure.md
+    triggers:
+      paths:
+        - "**/*.tf"
+    enforcement:
+      kind: pattern
+      pattern: |-
+        cidr_blocks\s*=\s*\[\s*"0\.0\.0\.0/0"

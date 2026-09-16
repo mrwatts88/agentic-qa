@@ -1,0 +1,70 @@
+pack: frontend
+rules:
+  - id: fe.storage.no-token-in-local-storage
+    statement: Never store tokens or credentials in localStorage or sessionStorage.
+    tier: mechanical
+    severity: error
+    rationale: >
+      Browser storage is not a security boundary. Any script running on the
+      origin can read it, so a single XSS hands over the session. Session
+      identifiers belong in an HttpOnly cookie the browser sets and JavaScript
+      cannot read.
+    source: full-stack-swe/04-frontend.md
+    triggers:
+      paths:
+        - "**/*.{ts,tsx,js,jsx}"
+    enforcement:
+      kind: pattern
+      flags: i
+      pattern: |-
+        (localStorage|sessionStorage)\.setItem\(\s*['"`][^'"`]*(token|jwt|secret|credential|password)
+
+  - id: fe.env.no-secret-in-public-env
+    statement: Do not read secrets from a build-inlined public env variable.
+    tier: mechanical
+    severity: error
+    rationale: >
+      Anything the build inlines into the client bundle ships to every user and
+      is readable in devtools. The VITE_ prefix marks a value as public, so a
+      secret behind that prefix is not a secret. Route it through the backend.
+    source: full-stack-swe/04-frontend.md
+    triggers:
+      paths:
+        - "**/*.{ts,tsx,js,jsx}"
+    enforcement:
+      kind: pattern
+      pattern: |-
+        import\.meta\.env\.VITE_[A-Z0-9_]*(SECRET|PASSWORD|PRIVATE)
+
+  - id: fe.a11y.no-click-handler-on-div
+    statement: Use a button for actions, not a div with a click handler.
+    tier: mechanical
+    severity: warn
+    rationale: >
+      A div styled as a button has no focus, no keyboard activation and no role,
+      so it is unusable by keyboard and screen reader users. The browser gives
+      all of that away for free on a real button.
+    source: full-stack-swe/04-frontend.md
+    triggers:
+      paths:
+        - "**/*.{tsx,jsx}"
+    enforcement:
+      kind: pattern
+      pattern: |-
+        <div[^>]*\sonClick=
+
+  - id: fe.security.no-dangerously-set-inner-html
+    statement: Do not inject raw HTML into the DOM.
+    tier: mechanical
+    severity: warn
+    rationale: >
+      Rendering unsanitised HTML is the most direct route to XSS. If it is
+      genuinely required, sanitise first and record why with a qa-ignore.
+    source: full-stack-swe/05-auth-and-security.md
+    triggers:
+      paths:
+        - "**/*.{tsx,jsx}"
+    enforcement:
+      kind: pattern
+      pattern: |-
+        dangerouslySetInnerHTML

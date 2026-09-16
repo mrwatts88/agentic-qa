@@ -34,9 +34,24 @@ fallback of last resort, not the default.
 ### Rule routing, not one big checklist
 
 Handing a model 200 rules gets a shallow pass on a dozen of them. Changed file
-paths and content select which rule packs load: a change under `components/`
-pulls the frontend and accessibility packs, not the migration pack. Routing is
-what makes the check both affordable and actually attentive.
+paths select which rules apply: a change under `components/` pulls the frontend
+rules, not the migration rules. Routing is what makes the check both affordable
+and actually attentive.
+
+`excludePaths` is what makes a layering rule expressible at all: importing the
+database client is a violation in a handler and correct in a repository.
+
+### Every rule needs a clean control, not just a violating one
+
+A new mechanical rule is not proven by catching its violation. It is proven by
+staying silent on correct code containing the same construct. `fixtures/rules`
+pairs each violation with a clean file for exactly this reason.
+
+### Rules ship with the tool, not with the repo
+
+A repo that keeps its own copy of the corpus is a repo whose rules drift, which
+is the problem this exists to solve. Project-local packs are additive, for
+genuinely local conventions.
 
 ### Three call sites, one CLI
 
@@ -69,9 +84,13 @@ forces a re-judge. That is intended behavior, not a cache miss.
 ### False positives outrank false negatives
 
 A checker that condemns good code gets switched off within a fortnight, and
-after that a clean run means nothing. The judge is scored against a corpus with
-known-correct verdicts (`agentic-qa eval`) and the two error directions are
-reported separately. A false positive is a release blocker.
+after that a clean run means nothing. Both halves are scored against corpora
+with known-correct answers, and the two error directions are reported
+separately. A false positive is a release blocker.
+
+Every rule also keeps a working `qa-ignore` escape hatch. Without a sanctioned
+way to switch off one rule with a recorded reason, the first false positive gets
+the whole check disabled instead.
 
 ### A judgment is not evidence until an experiment says so
 
@@ -95,20 +114,32 @@ cannot drift apart.
 
 **vitest exits 0 when `-t` matches nothing.** A typo in a test selector would
 otherwise look identical to "the test passed despite the mutation", which would
-condemn a perfectly good test: a false positive, the exact failure mode that
-kills adoption. Mutation grounding therefore reads the per-assertion `status`
-(`passed` / `failed` / `skipped`) out of the JSON reporter and matches it
-structurally on `ancestorTitles` plus `title`. Note the reporter writes to a
-file (`<root>/.vitest/json/output.json`), not stdout, and `fullName` joins the
-describe path with a space rather than a separator.
+condemn a perfectly good test. Mutation grounding therefore reads the
+per-assertion `status` out of the JSON reporter and matches it structurally on
+`ancestorTitles` plus `title`. The reporter writes to
+`<root>/.vitest/json/output.json`, not stdout, and `fullName` joins the describe
+path with a space.
+
+### Patterns match whole files, not single lines
+
+Some rules legitimately span a line break, such as an assertion followed by the
+closing brace of its test. Line numbers are recovered from the match offset. A
+related trap: `\s` matches newlines, so a pattern anchored with `^\s{4,}` starts
+matching on the blank line above and reports the wrong line. Use `[ \t]`.
+
+### No external scanner binaries are assumed
+
+semgrep, gitleaks, tflint, checkov and eslint are not installed here, so the
+mechanical tier is self-contained in the CLI. Delegating to those tools when
+they happen to be present is a later enhancement, never a requirement.
 
 ### Start small, then bulk-load the rules
 
 Enumerating all rules first produces hundreds of unenforceable ones and leaves
 the hard part (routing, caching, noise control, adoption) untouched. Build the
-machine end to end with a small rule set spanning all three tiers, prove the
-loop, then bulk-load. Converting the prose corpus in `~/code/full-stack-swe`
-into structured rules is an afternoon of work once the machine exists.
+machine end to end with a small rule set, prove the loop, then bulk-load from
+the prose corpus in `~/code/full-stack-swe` (about 34,000 words across twelve
+topics).
 
 ---
 
@@ -125,50 +156,31 @@ into structured rules is an afternoon of work once the machine exists.
 - Mutation grounding (`agentic-qa mutate`), verified on `fixtures/runnable`,
   where two tests that both pass are correctly separated into one real and one
   worthless by breaking the implementation.
-- Unit tests for this tool's own deterministic parts, in `test/`: extraction
-  (including a regression for the docblock bug), hashing and cache
-  invalidation, ledger pruning, config merging, and eval scoring. The judge and
-  the mutator are the non-deterministic pieces and are covered by the two
-  fixture corpora instead.
+- The rules engine (`agentic-qa rules`): schema, strict loader, path routing
+  with excludes, the pattern tier, `qa-ignore`, and scoring against
+  `fixtures/rules`. 8/8 known violations found, 0 false positives on the clean
+  control files.
+- A seed corpus of 14 rules across frontend, backend, testing and security.
+- Unit tests for this tool's own deterministic parts, in `test/`.
 
 ---
 
 ## Next
 
-### 1. The rules corpus and mechanical checkers
+### 1. Run the llm tier
 
-The tier-0 majority, and the other half of the original idea. Source material is
-the twelve-topic prose corpus in `~/code/full-stack-swe` (about 34,000 words),
-already organized by area: web fundamentals, backend architecture, data,
-frontend, auth and security, testing, repo hygiene, devops, observability,
-performance, infrastructure.
+The gap that matters most right now. Rules like `be.authz.ownership-check` and
+`be.errors.no-silent-fallback` are written down, routed, and carry their
+prompts, but **nothing executes them**. Only the mechanical tier runs.
 
-Rule schema, one structured object per rule:
+The pieces already exist: `src/judge.ts` knows how to ask a model a structured
+question cheaply, and routing already narrows which rules apply to a changed
+file. What is missing is the runner that feeds a changed hunk plus its
+applicable llm rules to the judge, and the caching so the same unchanged code is
+not re-judged on every commit.
 
-```
-id            be.authz.ownership-check
-statement     one imperative line
-tier          mechanical | llm | human
-enforcement   the lint rule id / pattern, or the judge prompt
-triggers      globs plus content patterns that make this rule apply
-rationale     short, why it exists (models judge better knowing why)
-exception     how to opt out with a recorded reason
-```
-
-Candidate mechanical rules for this stack: no tokens in `localStorage`; no
-browser globals at module scope (breaks SSR); nothing secret behind a `VITE_`
-prefix, since those ship to every user; no `useEffect` plus `fetch` plus a
-loading boolean when a query library is present; no database client imported
-outside the repository layer; no conditionals or loops in tests; no mocking the
-project's own modules; migrations must be reversible; no open security groups;
-no committed secrets.
-
-Candidate llm rules: endpoint checks resource ownership and not merely that
-someone is logged in; catch blocks that hide failures behind a plausible
-default; a new helper duplicating an existing one.
-
-Best done once there is a real repo to calibrate against. Writing rules with no
-code to run them on is how you end up with hundreds of unenforceable ones.
+Needs its own fixture corpus with known verdicts before it can be trusted,
+exactly as the contract judge did.
 
 ### 2. Adoption on an existing repo: the baseline ratchet
 
@@ -177,41 +189,44 @@ and gets switched off the same afternoon. Snapshot the existing violations, fail
 only on new ones, and require the count to trend down. Every successful linter
 adoption works this way. It has to be designed in, not bolted on.
 
-Also needed: a sanctioned escape hatch, `// qa-ignore: <rule-id> — reason`, that
-is recorded and auditable. Without one, people disable the whole check instead
-of the one rule.
-
 ### 3. Distribution
 
-The thing that decides whether this is a system or a one-off. Rules live in a
-versioned package consumed by both halves; a repo holds only `qa.config.yaml`
-and `.qa/`. If rules live in the repo, there are N copies to maintain.
+The thing that decides whether this is a system or a one-off. A repo should hold
+only `qa.config.yaml` and `.qa/`.
 
 - A **Claude Code plugin** for the agent-facing half: hooks, the review
   subagent, slash commands. Installable across repos from a marketplace.
 - An **installable CLI** for enforcement, used by git hooks and CI.
-- Both depend on the same rules package, so updating rules centrally updates
-  every repo.
+- Both depend on the same versioned rules package, so updating rules centrally
+  updates every repo.
 
-### 4. Mutation grounding, second pass
+### 4. Bulk-load the rules corpus
 
-Working, but narrow. Currently assumes vitest and finds the implementation by
-following the test file's relative imports. Worth extending to other runners and
-to tests whose subject is reached less directly. Also worth running the whole
-suite rather than one test occasionally, to catch a mutation that breaks
-something other than its target.
+Once the llm tier runs and the ratchet exists, convert the rest of
+`~/code/full-stack-swe` into structured rules. Each one needs a violating
+fixture and a clean control. Expect a meaningful fraction of the prose to be
+background knowledge rather than checkable rules; that part does not belong in
+the corpus.
+
+### 5. Mutation grounding, second pass
+
+Working, but narrow. Assumes vitest and finds the implementation by following
+the test file's relative imports. Worth extending to other runners and to tests
+whose subject is reached less directly. Also worth occasionally running the
+whole suite rather than one test, to catch a mutation that breaks something
+other than its target.
 
 ---
 
 ## Open questions
 
 - **Auth provider.** Cognito is the current guess. Affects the auth rule pack.
-- **How much of the prose corpus survives conversion.** Some chapters are
-  background knowledge rather than checkable rules, and background does not
-  belong in a rules corpus.
 - **Whether descriptions should be required on every test,** or only on tests
   above some complexity. Requiring them everywhere risks ceremony on trivial
   tests.
 - **Escaped-defect log.** When a real bug ships, ask which rule should have
   caught it. That is the feedback loop that makes the corpus earn its keep
   instead of just accreting. Worth building once there is a real repo.
+- **How `qa-ignore` gets audited.** The escape hatch is necessary, but a repo
+  where it spreads unchecked has quietly turned the rules off. Counting them and
+  watching the trend is probably enough.

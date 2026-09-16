@@ -95,6 +95,66 @@ VAGUE coupon.test.ts
           this description what observable outcome would prove it wrong.
 ```
 
+## Checking code against the rules
+
+The rules live in `rules/*.yaml`, one file per area, and ship with the tool
+rather than with the repo being checked. A repo that keeps its own copy is a
+repo whose rules quietly drift.
+
+Each rule says what it requires, why, and how it is enforced:
+
+```yaml
+- id: be.layer.no-db-client-outside-repository
+  statement: Import the database client only inside the repository layer.
+  tier: mechanical
+  severity: error
+  rationale: >
+    Layer boundaries only exist if something enforces them. Once a handler
+    queries the database directly, business rules and SQL interleave.
+  triggers:
+    paths: ["**/*.ts"]
+    excludePaths: ["**/repositories/**", "**/migrations/**"]
+  enforcement:
+    kind: pattern
+    pattern: |-
+      from\s+['"](pg|postgres|drizzle-orm|kysely|knex)['"]
+```
+
+`excludePaths` is what makes a layering rule possible: importing the database
+client is a violation in a handler and exactly right in a repository.
+
+Output looks like this:
+
+```
+ERROR api/handlers.ts:4
+  Import the database client only inside the repository layer. [be.layer.no-db-client-outside-repository]
+  import { sql } from "drizzle-orm";
+```
+
+### Turning one rule off
+
+Every rule can be opted out of, in one place, with a reason:
+
+```ts
+localStorage.setItem("authToken", token); // qa-ignore: fe.storage.no-token-in-local-storage - demo build only
+```
+
+This exists because without a sanctioned escape hatch, the first false positive
+gets the whole check disabled instead of the single rule.
+
+### Scoring the rules
+
+Same idea as scoring the judge. `fixtures/rules` holds files with known
+violations *and* clean files that contain the exact constructs the rules match
+on, in contexts where they are correct:
+
+```
+8/8 violations found · 0 false positive(s) on clean files
+```
+
+The clean files are the important half. Missing a problem is disappointing;
+firing on correct code is what gets the checker switched off.
+
 ## Proving it, instead of just believing it
 
 A model saying a test is weak is still an opinion. `agentic-qa mutate` turns it
@@ -147,6 +207,9 @@ npm run build
 Then from any repo with tests:
 
 ```
+agentic-qa rules                 # check code against the rules corpus
+agentic-qa rules --staged        # only files staged in git
+
 agentic-qa contracts             # check whatever changed
 agentic-qa contracts --staged    # only tests in files staged in git
 agentic-qa contracts --all       # re-check everything
@@ -223,21 +286,32 @@ cannot drift from the rules the gate enforces.
 ## What is not built yet
 
 See [ROADMAP.md](ROADMAP.md) for the full plan and the reasoning behind it.
-Short version: mutation grounding, the rules corpus and the mechanical checkers,
-a way to adopt this on an existing repo without drowning in violations,
-packaging it so it installs into any repo, and tests for this tool itself.
+Short version:
+
+- **The llm tier has no runner yet.** Rules like "an endpoint must check the
+  caller owns the record, not just that they are logged in" are written down and
+  routed, but nothing executes them. Only the mechanical tier runs today.
+- A way to adopt this on a repo that already has thousands of violations,
+  without everyone switching it off on day one.
+- Packaging, so it installs into any repo instead of living in this one.
 
 ## Repo layout
 
 ```
-src/cli.ts               argument parsing and exit codes
-src/config.ts            qa.config.yaml loading
-src/judge.ts             the only thing that talks to a model
-src/contracts/extract.ts reads tests out of source files
-src/contracts/ledger.ts  hashing and the saved verdicts
-src/contracts/check.ts   orchestration and reporting
-src/contracts/evaluate.ts scores the checker against known answers
-fixtures/sample/         deliberately broken tests with known-correct verdicts
+rules/*.yaml              the rules corpus, one file per area
+src/cli.ts                argument parsing and exit codes
+src/config.ts             qa.config.yaml loading
+src/judge.ts              the only thing that talks to a model
+src/rules/load.ts         reads and validates the corpus
+src/rules/route.ts        decides which rules apply to which files
+src/rules/mechanical.ts   runs the pattern rules
+src/contracts/extract.ts  reads tests out of source files
+src/contracts/ledger.ts   hashing and the saved verdicts
+src/contracts/mutate.ts   mutation grounding
+test/                     unit tests for the deterministic parts
+fixtures/sample/          broken tests with known-correct verdicts
+fixtures/runnable/        a green suite, for mutation grounding
+fixtures/rules/           known violations plus clean control files
 ```
 
 Target stack for the repos this checks: React/Vite/TypeScript/TanStack Query,

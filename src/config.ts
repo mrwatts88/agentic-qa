@@ -26,6 +26,12 @@ export interface QaConfig {
     /** Directory vitest runs against, relative to the repo root. */
     root: string;
   };
+  rules: {
+    /** Pack names to enable. Empty means every bundled pack. */
+    packs: string[];
+    /** Extra rule directories, relative to the repo, for local conventions. */
+    paths: string[];
+  };
 }
 
 export const DEFAULT_CONFIG: QaConfig = {
@@ -41,6 +47,10 @@ export const DEFAULT_CONFIG: QaConfig = {
   mutation: {
     root: ".",
   },
+  rules: {
+    packs: [],
+    paths: [],
+  },
 };
 
 const CONFIG_NAMES = ["qa.config.yaml", "qa.config.yml"];
@@ -55,6 +65,7 @@ export function loadConfig(cwd: string): QaConfig {
       ...raw,
       judge: { ...DEFAULT_CONFIG.judge, ...(raw.judge ?? {}) },
       mutation: { ...DEFAULT_CONFIG.mutation, ...(raw.mutation ?? {}) },
+      rules: { ...DEFAULT_CONFIG.rules, ...(raw.rules ?? {}) },
     };
   }
   return DEFAULT_CONFIG;
