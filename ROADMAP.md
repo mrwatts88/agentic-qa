@@ -440,6 +440,14 @@ judgment tier.
 
 ## Status
 
+**Read this first if you are new here.** The decisions above record what has been
+*settled*, which is not the same as what has been *built*. In particular, none of
+the delegation turn is implemented: today the mechanical tier is still the
+hand-written pattern tier described below, all 22 rules are still regexes, no
+adapter exists, and `mutate` is still the hand-rolled version rather than
+Stryker. The engines are chosen and the design is agreed; the code has not moved
+yet. Everything in this section, by contrast, runs.
+
 **Done and verified.**
 
 - The test-contract checker end to end: extraction (including `@describes`
@@ -505,6 +513,23 @@ typescript-eslint, eslint-plugin-sonarjs and eslint-plugin-vitest, then
 Then the coverage test: for every corpus rule with `kind: external`, assert the
 named rule is actually enabled in that tool's config. This is what stops the
 corpus becoming decoration.
+
+**Settle `qa-ignore` across engines before writing the second adapter.** Every
+engine brings its own suppression syntax — `eslint-disable-next-line`,
+`nosemgrep`, `gitleaks:allow` — and the invariant is that one repo has one
+escape hatch with one recorded reason. The answer that keeps it: adapters return
+findings and `src/rules/ignore.ts` filters them exactly as it does today, so
+`qa-ignore: <rule-id>` keeps working uniformly and nobody has to learn four
+dialects. An engine's native suppression still works, but it is not our
+mechanism and it is not what the audit counts.
+
+Two other things this phase must decide, both affecting the report rather than
+the engine: a missing tool fails **open** locally with a warning that names the
+rules left unenforced, and fails **closed** in CI, where a missing scanner is a
+repo problem rather than somebody's laptop. The coverage test is the other half —
+it fails hard wherever it runs, because a tool that is installed but no longer
+enforcing a promised rule is exactly the silent failure this design exists to
+prevent.
 
 Everything this preserves is deliberate: one CLI and four call sites, routing,
 `qa-ignore` in one place, one report format, the ladder. The only thing deleted

@@ -231,6 +231,22 @@ grounding needs.
   runs mean nothing. Weigh a false positive far more heavily than a miss, and
   re-run `eval` against both fixture corpora after any judge change.
 
+## Working on this repo itself
+
+- **This repo's own `Stop` hook runs `--mechanical` on purpose.** `init` writes
+  `agentic-qa stop` with no flag, so other repos get the judgment tiers at the
+  turn boundary. Here it is restricted to the free tier because a model call on
+  every turn of every session in this repo is real money for no benefit while
+  working on the tool itself. The discrepancy between `.claude/settings.json` and
+  what `init` writes is deliberate; do not "fix" it.
+- **`orders-admin` installs this as a git dependency, so it lags.** A new CLI
+  command does not exist there until this repo is pushed and the dependency is
+  reinstalled. The order is: commit and push here, then
+  `npm install github:mrwatts88/agentic-qa` there, then commit its lockfile.
+  Skipping it has twice produced a repo whose hooks call a command its installed
+  copy does not have — once for `install-hooks`, once for `stop`. Both times the
+  hook wiring looked perfect and simply did not work.
+
 ## Judge cost
 
 `--safe-mode` is load-bearing: it strips CLAUDE.md, skills, plugins, hooks and
