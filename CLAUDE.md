@@ -48,12 +48,18 @@ grounding needs.
 - `rules/*.yaml` — the rules corpus, one file per area.
 - `src/rules/load.ts` — reads and validates the corpus, strictly.
 - `src/rules/route.ts` — which rules apply to which files.
+- `src/rules/select.ts` — which files are worth checking: globbed from the rules'
+  own triggers, minus the ignore list, intersected with any scope a caller
+  supplies. Intersection, never substitution.
 - `src/rules/mechanical.ts` — runs the pattern tier.
 - `src/rules/llm.ts` — runs the judgment tier, with its own cached ledger.
 - `src/rules/ignore.ts` — the qa-ignore escape hatch, shared by both tiers.
+- `src/rules/evaluate.ts` — scores both rule tiers against a known-answer file.
 - `src/pool.ts` — shared bounded concurrency. Not for mutations, which must
   stay serial.
 - `src/hook.ts` — the PostToolUse hook. Reports to the model, never gates.
+- `src/stop.ts` — the Stop hook. Checks everything the turn changed and blocks
+  the agent from finishing while findings stand, at most once per turn.
 - `src/init.ts` — installs the call sites into a repo. Never overwrites.
 - `test/` — unit tests for the deterministic parts. Anything that talks to a
   model is covered by the fixture corpora instead.
