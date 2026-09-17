@@ -17,3 +17,6 @@ dist/
 .env
 .env.*
 !.env.example
+# Rule fixtures plant fake credentials in .env files on purpose; without them
+# CI scores the secret rules against files it never received.
+!fixtures/**/.env.*

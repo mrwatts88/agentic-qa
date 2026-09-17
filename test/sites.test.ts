@@ -70,6 +70,14 @@ describe("repo overrides", () => {
     expect(tools(adaptersFor(policyFor("ci", overrides), REGISTRY))).not.toContain("opengrep");
   });
 
+  it("lets commit and CI opt in to the gauntlet", () => {
+    const overrides = parseSiteOverrides({ commit: { gauntlet: true }, ci: { gauntlet: true } });
+
+    expect(policyFor("commit", overrides).gauntlet).toBe(true);
+    expect(policyFor("ci", overrides).gauntlet).toBe(true);
+    expect(policyFor("stop", overrides).gauntlet).toBe(false);
+  });
+
   it("ignores settings for the retired per-edit hook rather than failing to load", () => {
     expect(parseSiteOverrides({ edit: { llm: true }, commit: { scanners: "all" } })).toEqual({
       commit: { scanners: "all" },
@@ -89,9 +97,10 @@ describe("repo overrides", () => {
   });
 
   it.each([
+    [{ stop: { gauntlet: true } }, "the agent is told about the corpus only"],
     [{ commit: { llm: true } }, "a commit must not cost money"],
     [{ commit: { contracts: true } }, "a commit must not cost money"],
-  ])("refuses to put a model where an invariant forbids it: %j", (raw, why) => {
+  ])("refuses a cell an invariant fixes: %j", (raw, why) => {
     expect(() => parseSiteOverrides(raw)).toThrow(why);
   });
 });

@@ -14,6 +14,7 @@
     { "rule": "test.no-assertion-in-loop", "file": "tests/table.test.ts" },
     { "rule": "sec.no-world-open-security-group", "file": "infra/main.tf" },
     { "rule": "sec.no-aws-access-key-id", "file": "infra/.env.deploy" },
+    { "rule": "sec.no-committed-secret", "file": "infra/.env.payments" },
     { "rule": "data.sql.no-concatenated-query", "file": "data/queries.ts" },
     { "rule": "data.privacy.no-personal-data-in-logs", "file": "data/queries.ts" },
     { "rule": "sec.jwt.no-none-algorithm", "file": "security/auth.ts" },

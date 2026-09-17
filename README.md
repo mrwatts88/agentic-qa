@@ -40,6 +40,7 @@ Then:
 
 ```
 agentic-qa rules        # check code against the rules      (free)
+agentic-qa gauntlet     # everything else the scanners say  (free, never blocks)
 agentic-qa contracts    # check tests against their descriptions
 agentic-qa mutate       # break the code, confirm tests notice
 agentic-qa eval         # score the checker itself
@@ -82,11 +83,12 @@ gets the same checks.
 
 **Two kinds of result.**
 
-- **Errors and warnings** come from rules in this repo's own corpus
-  (`rules/*.yaml`). A corpus rule either runs its own pattern or names the
-  scanner rule that enforces it. Errors block.
-- **Notes** are everything else a scanner reports, labelled `<scanner>:<rule>`.
-  They are there to be seen and never block.
+- **The corpus** is the rules in this package's `rules/*.yaml`. A corpus rule
+  either runs its own pattern or names the scanner rule that enforces it. Its
+  errors block, and it is all that the end of a turn, a commit and CI report.
+- **The gauntlet** is everything else the scanners report — thousands of
+  community rules nobody has vetted for your code — labelled `<scanner>:<rule>`.
+  Nothing automatic shows it. You run it.
 
 If a corpus rule names a scanner rule that has been switched off, the check
 refuses to run rather than report clean code it never checked. Findings about
@@ -96,12 +98,36 @@ secrets never repeat the secret.
 ERROR api/handlers.ts:4
   Import the database client only inside the repository layer. [be.layer.no-db-client-outside-repository]
   import { sql } from "drizzle-orm";
-
-note  api/app.ts:24 The application redirects to a URL specified by user-supplied input. [opengrep:javascript.express.security.audit.express-open-redirect]
 ```
 
+### The gauntlet
+
+```
+agentic-qa gauntlet            # the whole repo
+agentic-qa gauntlet src/api    # or some paths
+```
+
+Every scanner, every rule, grouped by rule with the noisiest first. It never
+blocks. Work through it with an agent — "run the gauntlet, fix what is real,
+say which rules are wrong for this code" — and add a `qa-ignore` with a reason
+for anything that should stay.
+
+Once a repo is clean against it, consider keeping it that way by having commits
+enforce it too. Any gauntlet finding then blocks the commit:
+
+```yaml
+callSites:
+  commit:
+    gauntlet: true
+```
+
+The end of a turn never shows the gauntlet: shown to an agent, unvetted rules
+taught it to skip the checker's output altogether.
+
+### Exceptions
+
 Turn one rule off, in one place, with a reason. The same comment works for a
-corpus rule or a note, using the id in brackets:
+corpus rule or a gauntlet rule, using the id in brackets:
 
 ```ts
 localStorage.setItem("authToken", token); // qa-ignore: fe.storage.no-token-in-local-storage - demo build only
@@ -205,18 +231,18 @@ instead.
 Three call sites, each its own command, all in the same binary, so what the agent
 is told cannot drift from what the gate enforces. What each one runs by default:
 
-| call site | command | scanners | judgment rules | test contracts |
-| --- | --- | --- | --- | --- |
-| end of each turn | `agentic-qa stop` | eslint, dependency-cruiser, gitleaks, opengrep | yes | yes |
-| on commit | `agentic-qa commit` | eslint, dependency-cruiser, gitleaks | no | no |
-| CI | `agentic-qa ci` | eslint, dependency-cruiser, gitleaks, opengrep | yes | yes |
+| call site | command | scanners | judgment rules | test contracts | gauntlet |
+| --- | --- | --- | --- | --- | --- |
+| end of each turn | `agentic-qa stop` | eslint, dependency-cruiser, gitleaks, opengrep | yes | yes | no |
+| on commit | `agentic-qa commit` | eslint, dependency-cruiser, gitleaks | no | no | no |
+| CI | `agentic-qa ci` | eslint, dependency-cruiser, gitleaks, opengrep | yes | yes | no |
 
 - **End of each turn** checks everything the turn changed, and is the one that
   steers. If a rule is broken, the agent is not allowed to finish and is told
   why while it still has the context that produced the code. It blocks once,
-  then tells you and lets the turn end, so it can never trap a session.
-  opengrep's notes are shown to you here, without holding the turn. About 5s,
-  plus any judging.
+  then tells you and lets the turn end, so it can never trap a session. You
+  hear from it only then, or if a check could not run; a clean turn is silent.
+  It runs only the scanners that enforce a corpus rule on the changed files.
 - **On commit** checks staged files and refuses the commit on an error. It
   lives in a committed `hooks/` directory, and the `prepare` script points git
   at it on every `npm install`, so a fresh clone is gated without anyone typing
@@ -242,8 +268,9 @@ callSites:
 a later version stays out of the quick call sites without any config change.
 Skipping a scanner leaves the rules it enforces to the other call sites.
 
-Two cells cannot be changed: the commit hook never runs the judgment rules or
-test contracts, because a commit must never cost money or wait on a model. A misspelled call site, setting or scanner name is an error, not ignored.
+Three cells cannot be changed: the commit hook never runs the judgment rules or
+test contracts, because a commit must never cost money or wait on a model, and
+the end of a turn never shows the gauntlet. A misspelled call site, setting or scanner name is an error, not ignored.
 
 ### CI
 

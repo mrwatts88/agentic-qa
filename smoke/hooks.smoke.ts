@@ -44,7 +44,7 @@ function fixture(name: string): string {
 
 /** Breaks a corpus rule. */
 const VIOLATION = fixture("session.ts");
-/** Draws only a note from a slow scanner, which never blocks. */
+/** Draws only a gauntlet finding from a scanner, which Stop never shows. */
 const NOTE = fixture("app.ts");
 const RULE = "fe.storage.no-token-in-local-storage";
 /**
@@ -236,6 +236,7 @@ describe("Stop", () => {
     const events = await sessions.violation;
 
     expect(payloads(events, "Stop")[0]?.decision).toBe("block");
+    expect(payloads(events, "Stop")[0]?.systemMessage).toBeUndefined();
     expect(stopFeedback(events).join("\n")).toContain(RULE);
     expect(agentSpokeAfterFeedback(events)).toBe(true);
   });
@@ -266,12 +267,14 @@ describe("Stop", () => {
     expect(result).toMatch(/own|belong|userId|authori[sz]/i);
   });
 
-  it("does not hold the turn for scanner notes, and shows them to the person", async () => {
+  it("says nothing to anyone about what the corpus does not claim", async () => {
     const events = await sessions.notes;
 
+    // It ran, and said nothing: silence from a hook that never ran looks the same.
+    expect(hookOutputs(events, "Stop")).toHaveLength(1);
     expect(stopFeedback(events)).toEqual([]);
-    expect(payloads(events, "Stop")).toHaveLength(1);
-    expect(shownToPerson(events)).toContain("never block");
+    expect(payloads(events, "Stop")).toEqual([]);
+    expect(shownToPerson(events)).not.toContain("agentic-qa");
     expect(ended(events)).toBe(true);
   });
 

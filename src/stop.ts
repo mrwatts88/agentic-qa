@@ -57,9 +57,6 @@ function emit(payload: unknown): void {
 
 const FIX_OR_EXCUSE = `Fix these before finishing.\n${EXCEPTIONS_ARE_APPROVED}`;
 
-/** Notes from the slow engines. Stop stops showing notes at all: ROADMAP Next 1. */
-const NOTE_LIMIT = 15;
-
 /**
  * A judged finding, worded so the agent can act on it. The statement names the
  * principle; only the judge's reason says what it saw in this file, and the
@@ -72,12 +69,6 @@ export function judgedLines(f: Pick<Finding, "file" | "line" | "statement" | "ru
     ...(f.excerpt ? [`  What the judge saw: ${f.excerpt}`] : []),
     ...(f.rationale ? [`  Why it matters: ${f.rationale}`] : []),
   ].join("\n");
-}
-
-function noteLines(notes: Finding[]): string[] {
-  const shown = notes.slice(0, NOTE_LIMIT).map((f) => `- ${f.file}:${f.line} ${f.statement} [${f.ruleId}]`);
-  const more = notes.length - shown.length;
-  return more > 0 ? [...shown, `- ...and ${more} more (run: agentic-qa rules)`] : shown;
 }
 
 export async function runStop(cwd: string, options: StopOptions): Promise<number> {
@@ -99,20 +90,19 @@ export async function runStop(cwd: string, options: StopOptions): Promise<number
     const adapters = options.adapters ?? adaptersFor(policy);
     // One gate for both tiers, so an exception refused by either is listed once.
     const gate = new ExceptionGate(committedOnly(cwd));
-    const result = await runMechanical(cwd, files, rules, { adapters, exceptions: gate });
+    // The corpus only. Unvetted scanner output shown to the agent taught it to
+    // skip hook output altogether; that is `agentic-qa gauntlet`, run by a person.
+    const result = await runMechanical(cwd, files, rules, {
+      adapters,
+      exceptions: gate,
+      gauntlet: false,
+    });
 
     const findings: string[] = [];
     const mechanical = result.findings.filter((f) => f.origin === "corpus");
     for (const f of mechanical) {
       findings.push(`- ${f.file}:${f.line} ${f.statement} [${f.ruleId}]`);
     }
-
-    // Only the slow engines' notes, a leftover from when the per-edit hook showed
-    // the fast ones. Due to go: automatic call sites report the corpus only.
-    const slowTools = new Set(adapters.filter((a) => a.slow).map((a) => `${a.tool}:`));
-    const notes = result.findings.filter(
-      (f) => f.origin === "gauntlet" && [...slowTools].some((t) => f.ruleId.startsWith(t)),
-    );
 
     // The enforcement ladder, applied at runtime rather than only when a rule
     // is written: there is no point paying a model to judge code that already
@@ -142,8 +132,9 @@ export async function runStop(cwd: string, options: StopOptions): Promise<number
       (u) => `${u.tool} did not run (${u.reason})${u.rules.length ? `; unchecked: ${u.rules.join(", ")}` : ""}`,
     );
 
-    // Shown to the person on every pass, blocked or not: an attempted exception
-    // is exactly the thing they need to see rather than find later in a diff.
+    // An attempted exception is exactly what the person needs to see rather than
+    // find later in a diff. It always comes with a finding that still stands, so
+    // it reaches them with the second pass.
     const refused = gate.refused();
     const refusedSection = refused.length
       ? [
@@ -151,10 +142,6 @@ export async function runStop(cwd: string, options: StopOptions): Promise<number
           ...refusedLines(refused),
           "An exception takes effect once you commit it.",
         ]
-      : [];
-
-    const noteSection = notes.length
-      ? [`Scanners also noted ${notes.length} thing(s). These never block:`, ...noteLines(notes)]
       : [];
 
     if (findings.length && !options.stopHookActive) {
@@ -166,16 +153,15 @@ export async function runStop(cwd: string, options: StopOptions): Promise<number
           ...(refused.length
             ? ["", "These qa-ignore comments are not committed, so they do not count:", ...refusedLines(refused)]
             : []),
-          ...(noteSection.length ? ["", ...noteSection] : []),
         ].join("\n"),
-        ...(refusedSection.length ? { systemMessage: refusedSection.join("\n") } : {}),
       });
       return 0;
     }
 
-    // Nothing to hold the turn for, or it has already been held once. Tell the
-    // person and let the turn end: blocking again is how a session becomes
-    // unable to finish, and anything addressed to the agent would continue it.
+    // Nothing to hold the turn for, or it has already been held once. The person
+    // hears only when a block did not work, or when a check could not run; a
+    // clean turn says nothing. Blocking again is how a session becomes unable
+    // to finish, and anything addressed to the agent would continue it.
     const message = [
       ...(findings.length
         ? [
@@ -184,7 +170,6 @@ export async function runStop(cwd: string, options: StopOptions): Promise<number
           ]
         : []),
       ...refusedSection,
-      ...(noteSection.length ? [`agentic-qa: ${noteSection[0]}`, ...noteSection.slice(1)] : []),
       ...unenforced.map((u) => `agentic-qa: ${u}`),
     ];
     if (message.length) emit({ systemMessage: message.join("\n") });

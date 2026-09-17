@@ -48,7 +48,11 @@ export interface PatternEnforcement {
 export interface ExternalEnforcement {
   kind: "external";
   tool: string;
-  /** The tool's own rule id, exactly as the tool reports it. */
+  /**
+   * The tool's own rule id, exactly as the tool reports it, or `*` for every
+   * rule of the tool that no other corpus rule claims by name. `*` is only for
+   * a tool whose every rule is in scope, such as a secret scanner.
+   */
   rule: string;
 }
 

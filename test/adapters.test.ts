@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import type { Rule } from "../src/rules/types";
 import type { Adapter, ToolFinding, ToolRun } from "../src/rules/adapters/types";
 import { loadRules } from "../src/rules/load";
-import { runMechanical } from "../src/rules/mechanical";
+import { EVERY_RULE, runMechanical } from "../src/rules/mechanical";
 import { ruleAppliesTo } from "../src/rules/route";
 import { defaultAdapters } from "../src/rules/adapters/index";
 import { dependencyCruiser } from "../src/rules/adapters/dependency-cruiser";
@@ -234,7 +234,11 @@ describe("coverage of the bundled corpus", () => {
 
   // One row per claim per fixture, rather than a loop of assertions inside one
   // test: test.no-assertion-in-loop flagged exactly that here.
-  const rows = claimed.flatMap((rule) =>
+  // A claim on every rule names none to look up; its violating fixture, run
+  // through eval:rules, is what proves the engine still reports it.
+  const rows = claimed
+    .filter((rule) => (rule.enforcement as { rule: string }).rule !== EVERY_RULE)
+    .flatMap((rule) =>
     expected.violations
       .filter((v) => v.rule === rule.id)
       .map((v) => [rule.id, v.file, rule] as const),

@@ -21,10 +21,14 @@ function git(...args: string[]): void {
   execFileSync("git", args, { cwd: dir, stdio: "ignore" });
 }
 
-/** A slow engine that records whether it was asked to run. */
-function slowEngine(): Adapter & { ran: boolean } {
+/**
+ * A slow engine that records whether it was asked to run. Named for gitleaks,
+ * whose rules the corpus claims on every file, because the call sites run only
+ * engines that enforce a corpus rule on what they check.
+ */
+function slowEngine(tool = "gitleaks"): Adapter & { ran: boolean } {
   const engine = {
-    tool: "opengrep",
+    tool,
     slow: true,
     ran: false,
     handles: () => true,
@@ -98,6 +102,46 @@ describe("the commit call site", () => {
     await runCommit(dir, { registry: [slow] });
 
     expect(slow.ran).toBe(true);
+  });
+});
+
+describe("what the call sites report", () => {
+  /** A scanner finding no corpus rule claims. */
+  const unclaimed: Adapter = {
+    tool: "eslint",
+    handles: () => true,
+    run: async () => ({
+      status: "ran",
+      findings: [{ rule: "sonarjs/no-nested-conditional", file: "app.ts", line: 1, message: "Nested ternary." }],
+    }),
+    isLive: async () => true,
+  };
+
+  it("leaves out what the corpus does not claim, and does not block on it", async () => {
+    write("app.ts", "export const a = 1;\n");
+    git("add", "app.ts");
+
+    await expect(runCommit(dir, { registry: [unclaimed] })).resolves.toBe(0);
+    expect(stdout).not.toContain("no-nested-conditional");
+  });
+
+  it("does not run an engine that enforces no corpus rule on the files", async () => {
+    const slow = slowEngine("opengrep");
+    write("qa.config.yaml", "callSites:\n  ci:\n    llm: false\n    contracts: false\n");
+    write("app.ts", "export const a = 1;\n");
+
+    await runCi(dir, { registry: [slow] });
+
+    expect(slow.ran).toBe(false);
+  });
+
+  it("blocks on the gauntlet at commit once a repo opts in", async () => {
+    write("qa.config.yaml", "callSites:\n  commit:\n    gauntlet: true\n");
+    write("app.ts", "export const a = 1;\n");
+    git("add", "app.ts");
+
+    await expect(runCommit(dir, { registry: [unclaimed] })).resolves.toBe(1);
+    expect(stdout).toContain("eslint:sonarjs/no-nested-conditional");
   });
 });
 

@@ -100,7 +100,8 @@ describe("the Stop hook", () => {
       '// qa-ignore: fe.storage.no-token-in-local-storage - this is test code\n' +
       'localStorage.setItem("authToken", token);\n';
 
-    it("still blocks, and shows the attempt to the person", async () => {
+    /** The person hears only if the block does not work, on the second pass. */
+    it("still blocks, and tells only the agent on the first pass", async () => {
       git("init");
       write("session.ts", EXCUSED);
 
@@ -109,11 +110,10 @@ describe("the Stop hook", () => {
 
       expect(payload.decision).toBe("block");
       expect(payload.reason).toContain("session.ts:1 qa-ignore for fe.storage.no-token-in-local-storage");
-      expect(payload.systemMessage).toContain("not committed");
-      expect(payload.systemMessage).toContain("session.ts:1");
+      expect(payload.systemMessage).toBeUndefined();
     });
 
-    it("keeps showing the attempt on the pass that lets the turn end", async () => {
+    it("shows the attempt to the person on the pass that lets the turn end", async () => {
       git("init");
       write("session.ts", EXCUSED);
 
@@ -197,11 +197,13 @@ describe("the Stop hook", () => {
     expect(output).toBe("");
   });
 
-  /** A slow engine runs only here, so this is where its notes have to surface. */
-  describe("notes from the slow engines", () => {
-    const slow: Adapter = {
+  /**
+   * Unvetted scanner output shown to the agent taught it to skip hook output
+   * altogether. The gauntlet is `agentic-qa gauntlet`, run by a person.
+   */
+  describe("scanner findings the corpus does not claim", () => {
+    const scanner: Adapter = {
       tool: "slowscan",
-      slow: true,
       handles: () => true,
       run: async () => ({
         status: "ran",
@@ -209,29 +211,24 @@ describe("the Stop hook", () => {
       }),
       isLive: async () => true,
     };
-
-    it("shows them to the person without holding the turn", async () => {
+    it("say nothing to anyone on a clean turn", async () => {
       git("init");
       write("app.ts", "export const redirect = 1;\n");
 
-      await runStop(dir, { ...FIRST, adapters: [slow] });
-      const payload = JSON.parse(output);
+      await runStop(dir, { ...FIRST, adapters: [scanner] });
 
-      expect(payload.decision).toBeUndefined();
-      expect(payload.hookSpecificOutput).toBeUndefined();
-      expect(payload.systemMessage).toContain("slowscan:open-redirect");
+      expect(output).toBe("");
     });
 
-    it("hands them to the agent alongside a block, since it is continuing anyway", async () => {
+    it("stay out of a block", async () => {
       git("init");
       write("app.ts", 'localStorage.setItem("authToken", token);\n');
 
-      await runStop(dir, { ...FIRST, adapters: [...defaultAdapters({ fast: true }), slow] });
+      await runStop(dir, { ...FIRST, adapters: [...defaultAdapters({ fast: true }), scanner] });
       const payload = JSON.parse(output);
 
       expect(payload.decision).toBe("block");
-      expect(payload.reason).toContain("fe.storage.no-token-in-local-storage");
-      expect(payload.reason).toContain("slowscan:open-redirect");
+      expect(payload.reason).not.toContain("open-redirect");
     });
   });
 

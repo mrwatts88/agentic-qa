@@ -10,6 +10,7 @@ import { loadLedger, saveLedger } from "./contracts/ledger.js";
 import { loadRules } from "./rules/load.js";
 import { readHookPayload } from "./hook.js";
 import { runStop } from "./stop.js";
+import { runGauntlet } from "./gauntlet.js";
 import { runInit, installHooks, prepareLine, installedCallSites } from "./init.js";
 import { selectFiles } from "./rules/select.js";
 import { runMechanical } from "./rules/mechanical.js";
@@ -28,6 +29,7 @@ Usage:
   agentic-qa commit                 pre-commit hook: check staged files; exits 1 on errors
   agentic-qa ci                     CI: check the whole repo, judgment tiers included
   agentic-qa rules [options]        check changed code against the rules corpus
+  agentic-qa gauntlet [paths...]    every scanner rule, grouped by rule; never blocks
   agentic-qa rules --llm            also run the rules that need a model's judgment
   agentic-qa contracts [options]    verify tests assert what their descriptions claim
   agentic-qa mutate [options]       break the code on purpose and check the tests notice
@@ -116,6 +118,11 @@ async function main(): Promise<number> {
   // table in src/sites.ts, plus this repo's overrides.
   if (command === "commit") return runCommit(cwd);
   if (command === "ci") return runCi(cwd);
+
+  // Everything the corpus does not claim, for a person to triage. Never blocks.
+  if (command === "gauntlet") {
+    return runGauntlet(cwd, positionals.slice(1), { json: values.json });
+  }
 
   // Downloads the pinned scanners and rules now rather than on first use. Every
   // check provisions on demand anyway; this is for CI, and for a machine that
@@ -235,9 +242,10 @@ async function main(): Promise<number> {
       values.staged ? stagedFiles(cwd) : undefined,
     );
 
-    // Every engine: a person running this by hand asked for a full check. The
-    // call sites choose their engines from the table instead.
-    const mechanical = await runMechanical(cwd, files, rules);
+    // Every engine that enforces a corpus rule here: a person running this by
+    // hand asked for a full corpus check. Everything else the scanners say is
+    // `agentic-qa gauntlet`.
+    const mechanical = await runMechanical(cwd, files, rules, { gauntlet: false });
     const findings = mechanical.findings;
     printUnenforced(mechanical.unenforced);
 

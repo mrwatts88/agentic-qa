@@ -34,25 +34,37 @@ export interface SitePolicy {
   llm: boolean;
   /** Test contracts: whether tests assert what their descriptions claim. */
   contracts: boolean;
+  /**
+   * Every scanner finding, not only the corpus's, and blocking on any of it.
+   * Off by default: unvetted rules that block turn each false positive into a
+   * forced exception. For a repo that has worked through `agentic-qa gauntlet`
+   * and wants to stay clean against it.
+   */
+  gauntlet: boolean;
 }
 
 export const DEFAULT_POLICY: Record<CallSite, SitePolicy> = {
   // The one agent-facing place that can hold the turn; cost, not latency, is
   // what limits it.
-  stop: { scanners: "all", skip: [], llm: true, contracts: true },
+  stop: { scanners: "all", skip: [], llm: true, contracts: true, gauntlet: false },
   // Every commit pays this, a person's as much as an agent's. The slow engines'
   // corpus rules still block at Stop and in CI, and CI is the gate nobody can
   // skip with --no-verify.
-  commit: { scanners: "fast", skip: [], llm: false, contracts: false },
+  commit: { scanners: "fast", skip: [], llm: false, contracts: false, gauntlet: false },
   // The authority: everything.
-  ci: { scanners: "all", skip: [], llm: true, contracts: true },
+  ci: { scanners: "all", skip: [], llm: true, contracts: true, gauntlet: false },
 };
 
 /**
- * Cells a repo may not change, and why. An invariant rather than a preference:
- * a commit must never cost money or wait on a model.
+ * Cells a repo may not change, and why. Invariants rather than preferences: a
+ * commit must never cost money or wait on a model, and the agent hears only
+ * the corpus, because unvetted scanner output taught it to skip hook output.
  */
 const FIXED: Partial<Record<CallSite, { cells: (keyof SitePolicy)[]; why: string }>> = {
+  stop: {
+    cells: ["gauntlet"],
+    why: "the agent is told about the corpus only; run agentic-qa gauntlet instead",
+  },
   commit: {
     cells: ["llm", "contracts"],
     why: "a commit must not cost money or wait on a model",
@@ -61,7 +73,7 @@ const FIXED: Partial<Record<CallSite, { cells: (keyof SitePolicy)[]; why: string
 
 export type SiteOverrides = Partial<Record<CallSite, Partial<SitePolicy>>>;
 
-const KEYS: (keyof SitePolicy)[] = ["scanners", "skip", "llm", "contracts"];
+const KEYS: (keyof SitePolicy)[] = ["scanners", "skip", "llm", "contracts", "gauntlet"];
 
 function fail(message: string): never {
   throw new Error(`qa.config.yaml callSites: ${message}`);
@@ -99,7 +111,7 @@ function parseCell(site: CallSite, key: string, cell: unknown, policy: Partial<S
   }
 
   if (typeof cell !== "boolean") fail(`${site}.${key} must be true or false`);
-  policy[key as "llm" | "contracts"] = cell;
+  policy[key as "llm" | "contracts" | "gauntlet"] = cell;
 }
 
 /**
@@ -154,13 +166,13 @@ const LABELS: Record<CallSite, { where: string; command: string }> = {
 export function renderSiteTable(registry: Adapter[] = defaultAdapters()): string {
   const yes = (on: boolean) => (on ? "yes" : "no");
   return [
-    "| call site | command | scanners | judgment rules | test contracts |",
-    "| --- | --- | --- | --- | --- |",
+    "| call site | command | scanners | judgment rules | test contracts | gauntlet |",
+    "| --- | --- | --- | --- | --- | --- |",
     ...CALL_SITES.map((site) => {
       const policy = DEFAULT_POLICY[site];
       const tools = adaptersFor(policy, registry).map((a) => a.tool).join(", ");
       const { where, command } = LABELS[site];
-      return `| ${where} | \`${command}\` | ${tools} | ${yes(policy.llm)} | ${yes(policy.contracts)} |`;
+      return `| ${where} | \`${command}\` | ${tools} | ${yes(policy.llm)} | ${yes(policy.contracts)} | ${yes(policy.gauntlet)} |`;
     }),
   ].join("\n");
 }

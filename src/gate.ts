@@ -36,8 +36,16 @@ export function printUnenforced(unenforced: Unenforced[]): void {
   }
 }
 
-/** Prints rule findings and returns whether any corpus error stands. */
-export function printFindings(findings: Finding[], rules: Rule[], files: string[]): boolean {
+/**
+ * Prints rule findings and returns whether any blocks: a corpus error, or any
+ * gauntlet finding when the call site has opted in to enforcing the gauntlet.
+ */
+export function printFindings(
+  findings: Finding[],
+  rules: Rule[],
+  files: string[],
+  gauntletBlocks = false,
+): boolean {
   const corpus = findings.filter((f) => f.origin === "corpus");
   const gauntlet = findings.filter((f) => f.origin === "gauntlet");
 
@@ -47,23 +55,23 @@ export function printFindings(findings: Finding[], rules: Rule[], files: string[
     process.stdout.write(`  ${f.statement} ${pc.dim(`[${f.ruleId}]`)}\n`);
     process.stdout.write(`  ${pc.dim(f.excerpt)}\n\n`);
   }
-  // One line each: the gauntlet is there to be seen, not to dominate.
+  // One line each. Present only where a call site opted in, and then it blocks.
   for (const f of gauntlet) {
     process.stdout.write(
-      `${pc.dim("note ")} ${f.file}:${f.line} ${f.statement} ${pc.dim(`[${f.ruleId}]`)}\n`,
+      `${pc.red("ERROR")} ${f.file}:${f.line} ${f.statement} ${pc.dim(`[${f.ruleId}]`)}\n`,
     );
   }
   if (gauntlet.length) process.stdout.write("\n");
 
   const errors = corpus.filter((f) => f.severity === "error").length;
+  const gauntletNote = gauntletBlocks ? ` · ${gauntlet.length} gauntlet finding(s)` : "";
   process.stdout.write(
     pc.dim(
       `${rules.length} rules · ${files.length} files · ` +
-        `${errors} error(s), ${corpus.length - errors} warning(s) · ` +
-        `${gauntlet.length} gauntlet note(s), not blocking\n`,
+        `${errors} error(s), ${corpus.length - errors} warning(s)${gauntletNote}\n`,
     ),
   );
-  return errors > 0;
+  return errors > 0 || (gauntletBlocks && gauntlet.length > 0);
 }
 
 export interface GateOptions {
@@ -93,10 +101,11 @@ export async function runCommit(cwd: string, options: GateOptions = {}): Promise
   const files = await selectFiles(cwd, config, rules, stagedFiles(cwd));
   const result = await runMechanical(cwd, files, rules, {
     adapters: adaptersFor(policy, options.registry),
+    gauntlet: policy.gauntlet,
   });
 
   printUnenforced(result.unenforced);
-  return printFindings(result.findings, rules, files) ? 1 : 0;
+  return printFindings(result.findings, rules, files, policy.gauntlet) ? 1 : 0;
 }
 
 /**
@@ -122,6 +131,7 @@ export async function runCi(cwd: string, options: GateOptions = {}): Promise<num
   const files = await selectFiles(cwd, config, rules);
   const result = await runMechanical(cwd, files, rules, {
     adapters: adaptersFor(policy, options.registry),
+    gauntlet: policy.gauntlet,
   });
   const findings = [...result.findings];
   printUnenforced(result.unenforced);
@@ -143,7 +153,7 @@ export async function runCi(cwd: string, options: GateOptions = {}): Promise<num
     );
   }
 
-  let failed = printFindings(findings, rules, files);
+  let failed = printFindings(findings, rules, files, policy.gauntlet);
 
   if (policy.contracts && canJudge) {
     const contracts = await checkContracts(config, { cwd, all: false, json: false });

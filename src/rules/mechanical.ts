@@ -121,7 +121,17 @@ export interface MechanicalOptions {
    * automatic call sites pass a gate that honours only committed ones.
    */
   exceptions?: ExceptionGate;
+  /**
+   * Whether to report what no corpus rule claims. Off, an engine that claims no
+   * rule routed to the files is not run at all, and unclaimed findings are
+   * dropped: the call sites enforce the corpus. On, every engine runs broad and
+   * reports everything, which is the gauntlet. On by default.
+   */
+  gauntlet?: boolean;
 }
+
+/** A claim on every rule of a tool that no other corpus rule claims by name. */
+export const EVERY_RULE = "*";
 
 function readLines(cwd: string, file: string, cache: Map<string, string[]>): string[] {
   let lines = cache.get(file);
@@ -144,6 +154,7 @@ async function runAdapter(
   ci: boolean,
   lineCache: Map<string, string[]>,
   gate: ExceptionGate,
+  gauntlet: boolean,
 ): Promise<{ findings: Finding[]; unenforced?: Unenforced }> {
   const handled = files.filter((file) => adapter.handles(file));
   if (!handled.length) return { findings: [] };
@@ -153,6 +164,15 @@ async function runAdapter(
     const e = rule.enforcement;
     if (e.kind === "external" && e.tool === adapter.tool) claims.set(e.rule, rule);
   }
+  const everyRule = claims.get(EVERY_RULE);
+  const claimFor = (toolRule: string) => claims.get(toolRule) ?? everyRule;
+
+  // Enforcing the corpus only, an engine with nothing to enforce here is time
+  // spent producing findings that would all be dropped.
+  const enforcesSomething = handled.some((file) =>
+    [...claims.values()].some((rule) => ruleAppliesTo(rule, file)),
+  );
+  if (!gauntlet && !enforcesSomething) return { findings: [] };
 
   const run = await adapter.run(cwd, handled);
 
@@ -180,7 +200,8 @@ async function runAdapter(
   const broken = new Map<string, string[]>();
   for (const file of handled) {
     for (const [toolRule, rule] of claims) {
-      if (!ruleAppliesTo(rule, file)) continue;
+      // A claim on every rule names none, so there is no one rule to look for.
+      if (toolRule === EVERY_RULE || !ruleAppliesTo(rule, file)) continue;
       if ((await adapter.isLive(cwd, toolRule, file)) === false) {
         const key = `${rule.id} (${adapter.tool} ${toolRule}`;
         broken.set(key, [...(broken.get(key) ?? []), file]);
@@ -198,8 +219,9 @@ async function runAdapter(
 
   const findings: Finding[] = [];
   for (const hit of run.findings) {
-    const rule = claims.get(hit.rule);
+    const rule = claimFor(hit.rule);
     const promised = rule && ruleAppliesTo(rule, hit.file);
+    if (!promised && !gauntlet) continue;
     const lines = readLines(cwd, hit.file, lineCache);
 
     const ruleId = promised ? rule.id : `${adapter.tool}:${hit.rule}`;
@@ -277,7 +299,7 @@ export async function runMechanical(
   const ci = options.ci ?? Boolean(process.env.CI);
   const lineCache = new Map<string, string[]>();
   for (const adapter of options.adapters ?? defaultAdapters()) {
-    const result = await runAdapter(cwd, adapter, files, rules, ci, lineCache, gate);
+    const result = await runAdapter(cwd, adapter, files, rules, ci, lineCache, gate, options.gauntlet ?? true);
     findings.push(...result.findings);
     if (result.unenforced) unenforced.push(result.unenforced);
   }

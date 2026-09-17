@@ -28,7 +28,7 @@ selling are not goals. Revisit the licensing decisions if that ever changes.
 
 These are settled. Revisit only with a reason.
 
-### Decided, not yet built: the hooks enforce the corpus, and the gauntlet is on demand
+### The hooks enforce the corpus, and the gauntlet is on demand
 
 Reached by dogfooding. Building the call-site table in this repo, with the hooks
 live, the per-edit hook fired on nearly every file written, and almost all of it
@@ -175,8 +175,8 @@ Agent hooks, git hooks, and CI all invoke the same binary. Never fork the logic
 per call site, or the rules the agent is told about drift from the rules the
 gate enforces.
 
-- **Agent harness hooks** (`PostToolUse`, `Stop`) — the fast loop. (`PostToolUse`
-  is being removed; see "Decided, not yet built: the hooks enforce the corpus".) Feedback
+- **Agent harness hooks** (`Stop`; `PostToolUse` was removed, see "The hooks
+  enforce the corpus, and the gauntlet is on demand") — the fast loop. Feedback
   reaches the agent while it still holds the context that produced the code.
   This is where most of the leverage is: catching it at commit is far weaker,
   because the agent has moved on.
@@ -322,8 +322,8 @@ only. A subagent's edits are therefore caught at the end of the main turn, by
 the same working-tree scope that catches a change made in Bash — deferred, but
 not missed.
 
-**Overruled, not yet built:** the per-edit hook is being removed anyway, with this
-cost accepted; see "Decided, not yet built: the hooks enforce the corpus". The
+**Overruled:** the per-edit hook was removed anyway, with this cost accepted;
+see "The hooks enforce the corpus, and the gauntlet is on demand". The
 argument as it stood: PostToolUse *does* fire
 inside subagents, carrying `agent_id` and `agent_type`, so it is the only
 feedback a subagent can receive while it can still act on it. Removing it, which
@@ -642,11 +642,11 @@ Full coverage immediately, curated gating from day one, and a promotion path —
 tool rule that proves itself gets a corpus entry and starts blocking. That is the
 baseline ratchet, arriving as a side effect.
 
-**Revised, not yet built:** a warning shown to an agent on every edit turned out
-not to be "visible" but ignorable, and ignorable output trains the reader to
-ignore all of it. Gauntlet findings will leave the automatic call sites entirely
-and live in an on-demand command; see "Decided, not yet built: the hooks enforce
-the corpus". The coverage half of this section stands unchanged.
+**Revised:** a warning shown to an agent on every edit turned out not to be
+"visible" but ignorable, and ignorable output trains the reader to ignore all of
+it. Gauntlet findings left the automatic call sites entirely and live in
+`agentic-qa gauntlet`; see "The hooks enforce the corpus, and the gauntlet is on
+demand". The coverage half of this section stands unchanged.
 
 ### The 22 rules are a test set, not a spec
 
@@ -915,49 +915,20 @@ produces more output nobody can rely on.
 
 ### 1. The hooks enforce the corpus; the gauntlet runs on demand
 
-Decided; see "Decided, not yet built: the hooks enforce the corpus, and the
-gauntlet is on demand" for the reasoning. To build:
+Built. See "The hooks enforce the corpus, and the gauntlet is on demand" for the
+reasoning. What landed, beyond the decision as written:
 
-- **Remove the per-edit hook.** Done: `init --claude-hook` writes Stop only, the
-  `edit` row is gone from `src/sites.ts`, and `agentic-qa hook` exits zero
-  silently so older settings do not error, and `callSites.edit` in an older
-  config is ignored rather than failing to load.
-- **Stop, commit and CI report corpus findings only.** Drop unclaimed scanner
-  findings there, and run only the engines that claim a corpus rule routed to
-  the files being checked.
-- **Commit runs the corpus's mechanical rules; CI runs both tiers.** Already the
-  table's defaults apart from the gauntlet.
-- **`agentic-qa gauntlet`** runs every engine broad over the repo (or a path),
-  never blocks, and groups output by rule so a triage session sees "this rule,
-  these N places" rather than a wall. An npm script in this repo, and a
-  documented command for consuming repos.
-- **Commit can opt in to the gauntlet**, as a `callSites.commit` setting, off by
-  default, blocking when on. The README recommends turning it on once a repo is
-  clean against the gauntlet, and says how to get there: run it, fix what is
-  real, turn off or `qa-ignore` what is not.
-- **Stop messages the person only on the second pass**, with the findings that
-  still stand and any refused exceptions. No notes on clean turns.
-- **Judgment findings at Stop carry the judge's reason and the rule's
-  rationale.** Done, with a smoke scenario in which the agent, handed only the
-  block, names the ownership check to add.
-- **Update the invariants this changes** in CLAUDE.md: "The PostToolUse hook
-  always exits zero", "The hook reports only on the file just edited", "Slow
-  engines stay out of the per-edit hook", "Nothing that writes a ledger may run
-  from a hook that can fire concurrently" (still true, now moot), the notes half
-  of "Stop blocks through a top-level decision", and "The corpus asserts
-  coverage", whose last sentence about gauntlet warnings changes.
-- **Smoke tests:** drop the per-edit scenario, change the notes scenario to
-  expect no message, add the second-pass-only message and the judgment reason.
-- **README:** the call-site table, the gauntlet command, and what the person
-  sees. The table test will force the first.
-- **`orders-admin`:** reinstall, then `init --claude-hook --force` so its
-  settings lose the per-edit hook.
-
-
+- **gitleaks is claimed whole.** Dropping unclaimed findings would have left an
+  AWS key the only secret a commit could be stopped for, since the corpus
+  claimed one gitleaks rule of about 200. `sec.no-committed-secret` claims every
+  gitleaks rule not claimed by name (`rule: "*"`).
+- **Commit and CI can both opt in to the gauntlet** (`callSites.<site>.gauntlet`),
+  blocking when on. Stop cannot.
+- **`agentic-qa rules` reports the corpus only**, like the call sites.
 
 ### 2. Use it for real on `orders-admin`
 
-Once item 1 is in. `orders-admin` is on the current version, with the working Stop hook. Build an
+`orders-admin` is on the current version, with the working Stop hook. Build an
 actual feature there with the hooks live, and record what nothing else can show:
 
 - **The judgment tier at Stop, now that it can block.** It runs the llm rules and

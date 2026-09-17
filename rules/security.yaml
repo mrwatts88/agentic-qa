@@ -22,9 +22,8 @@ rules:
         - "**/*.{BMP,GIF,JPG,JPEG,PNG,SVG,PDF}"
         - "**/gitleaks.toml"
         - "**/node_modules/**"
-        # A test has to write the shape of a key to prove it is caught. A hit
-        # here is demoted to a note, not dropped, so a real key pasted into a
-        # test is still visible.
+        # A test has to write the shape of a key to prove it is caught. A real
+        # key pasted into a test still shows in `agentic-qa gauntlet`.
         - "**/*.{test,spec}.{ts,tsx,js,jsx}"
     # Delegated: gitleaks' rule also catches ASIA temporary credentials, which
     # the AKIA-only pattern missed, and applies an entropy threshold and an
@@ -35,6 +34,38 @@ rules:
       kind: external
       tool: gitleaks
       rule: aws-access-token
+
+  - id: sec.no-committed-secret
+    statement: Never commit a secret — a token, private key or credential.
+    tier: mechanical
+    severity: error
+    redact: true
+    rationale: >
+      A secret in source control is compromised the moment it is pushed, and
+      rotating it is the only fix. Every kind gitleaks recognises is in scope,
+      which is why this claims all of its rules rather than a list that would
+      fall behind its ruleset.
+    source: full-stack-swe/05-auth-and-security.md
+    triggers:
+      paths:
+        - "**/*"
+      # Mirrors the parts of gitleaks' own path allowlist a TypeScript and
+      # Terraform repo actually contains. The corpus must not promise coverage
+      # on files the tool deliberately never scans: the coverage check refuses
+      # to run when it does, and was right to.
+      excludePaths:
+        - "**/{package-lock.json,npm-shrinkwrap.json,pnpm-lock.yaml,yarn.lock,deno.lock}"
+        - "**/*.{bmp,gif,jpg,jpeg,png,svg,tif,tiff,eot,otf,ttf,woff,woff2,pdf,doc,docx,xls,xlsx}"
+        - "**/*.{BMP,GIF,JPG,JPEG,PNG,SVG,PDF}"
+        - "**/gitleaks.toml"
+        - "**/node_modules/**"
+        # A test has to write the shape of a key to prove it is caught. A real
+        # key pasted into a test still shows in `agentic-qa gauntlet`.
+        - "**/*.{test,spec}.{ts,tsx,js,jsx}"
+    enforcement:
+      kind: external
+      tool: gitleaks
+      rule: "*"
 
   - id: sec.no-hardcoded-credential
     statement: Do not hardcode a credential in source.

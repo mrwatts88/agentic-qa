@@ -25,7 +25,8 @@ npm run eval:rules-llm        # score judgment rules on fixtures/rules-llm; cost
 npm run eval:contracts        # score the contract judge on fixtures/sample; costs money
 node dist/cli.js contracts    # judge tests against their descriptions
 node dist/cli.js mutate       # break the code and check the tests notice
-node dist/cli.js rules        # run the rules tiers; --llm adds judgment
+node dist/cli.js rules        # run the corpus; --llm adds judgment
+node dist/cli.js gauntlet     # everything the corpus does not claim; never blocks
 node dist/cli.js setup        # download the pinned scanners and rules now
 ```
 
@@ -97,11 +98,6 @@ grounding needs.
 
 ## Invariants
 
-**Decided, partly built:** the per-edit hook is removed; the automatic call
-sites will enforce only the corpus, and the gauntlet will run on demand. The
-invariants about gauntlet warnings and Stop's notes change when that lands;
-ROADMAP Next item 1 lists them. Until then they describe the code as it is.
-
 - **The enforcement ladder.** Every rule declares the cheapest tier that can
   enforce it: `mechanical` (lint, tsc, dependency-cruiser, semgrep) before
   `llm` before `human`. Paying a model to do a linter's job is strictly worse.
@@ -115,8 +111,17 @@ ROADMAP Next item 1 lists them. Until then they describe the code as it is.
   a filter on tool output — filtering to it would discard thousands of rules to
   keep ours. Run the tools broad. A corpus rule names a tool and rule id, and a
   test asserts that rule is still live in the tool's config, so dropping a plugin
-  fails a test naming the promises it broke. Findings from corpus rules are
-  errors and block; findings from the gauntlet are warnings and never block.
+  fails a test naming the promises it broke. The call sites — Stop, commit, CI
+  — report the corpus only and skip any engine that enforces no corpus rule on
+  the files; `agentic-qa gauntlet` reports everything else and never blocks.
+  That is not the filter warned against, because the gauntlet still exists,
+  whole, in its own command. Commit and CI may opt in to blocking on it; Stop
+  never shows it, because unvetted rules shown to the agent taught it to skip
+  hook output altogether.
+- **A corpus claim on a whole tool (`rule: "*"`) is for a tool whose every rule
+  is in scope.** gitleaks is one: dropping unclaimed findings would otherwise
+  have silenced every secret but an AWS key. A rule claimed by name wins over
+  the wildcard.
 - **One CLI, three call sites.** The turn-boundary hook, the git hook, and CI
   all invoke this same binary. Never fork the logic per call site,
   or the rules the agent is told about drift from the rules the gate enforces.
@@ -185,8 +190,9 @@ ROADMAP Next item 1 lists them. Until then they describe the code as it is.
   why, and a crash would hold it forever. `decision` nested in
   `hookSpecificOutput` is silently ignored — the hook shipped that way and never
   blocked. `hookSpecificOutput.additionalContext` keeps the agent going too, so
-  it is never used for anything that must let the turn end: the second pass,
-  notes and a failure to run all go to the person as `systemMessage`.
+  it is never used for anything that must let the turn end: the second pass
+  and a failure to run go to the person as `systemMessage`. The person hears
+  nothing on the first pass or on a clean turn.
 - **A hook contract is verified by running a real session.** Reading the docs
   produced the nested-`decision` bug, and tests that assert the emitted JSON
   only prove it was emitted. Run `npm run smoke` before committing any change
