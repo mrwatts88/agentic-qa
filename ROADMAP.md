@@ -945,7 +945,26 @@ unjudged or failed judgments reported to the person. Also seen:
   owner's call; see Open questions.
 - The agent, denied `DATABASE_URL=... npm test`, retried with
   `dangerouslyDisableSandbox`, and tried `git stash`. Both denied.
-- Still unmeasured: what the agent does when Stop does hold it. Trial 2.
+
+**Trial 2, same prompt, after the fix** ($0.68, 6 minutes): Stop finished in
+time and told the person, but judged too little to be worth having. One rule
+judgment hit the judge's 120s timeout, 8 test contracts were left for a next
+turn that a headless run never has, and nothing blocked, so the agent heard
+nothing. Measured on its `orders.ts`, one judgment at a time:
+
+- Startup is 1.9s. The judging is the cost: the ownership rule takes about 50s
+  and $0.03 on a handler, the other three 10-18s each. Nearly all of it is
+  Haiku's thinking; `--effort low` changes nothing.
+- Three of those four answered `not-applicable` and still cost 35s. Routing is
+  by extension, so every backend rule is sent every `.ts` file, and each new
+  test is a call of its own.
+
+So judgment at every turn's end does not fit a turn as built. The levers, not
+yet chosen: route llm rules on content as well as path (fewer calls; a bad
+pattern is a silent miss), judge every rule for a file in one call (one think
+per file; changes the ledger and needs re-scoring), raise concurrency, or move
+the judgment tiers off Stop to commit or CI, where minutes are acceptable. Also
+unmeasured still: what the agent does when Stop holds it for a judged finding.
 
 `orders-admin` is on the current version, with the working Stop hook. Build an
 actual feature there with the hooks live, and record what nothing else can show:
