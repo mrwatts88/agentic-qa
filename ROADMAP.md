@@ -928,6 +928,25 @@ reasoning. What landed, beyond the decision as written:
 
 ### 2. Use it for real on `orders-admin`
 
+**Trial 1, 2026-09-17** (prompt in `fixtures/probes/trial-orders-api/`): a
+headless Sonnet session built an orders API — repository, service, handlers, 18
+passing tests — in 9 minutes for $0.65. Stop checked none of it. Cold, it made
+about 30 judge calls (every llm rule on every changed file, plus every new
+test) at concurrency 4, overran its 300s timeout and was cancelled, which
+reports nothing to anyone. Run by hand with some verdicts cached it took 3m44s.
+Every judge call also waited 3s on an open stdin. Fixed: stdin closed, a
+judging window that always leaves Stop inside its timeout (now 600s), and
+unjudged or failed judgments reported to the person. Also seen:
+
+- The by-hand run blocked on two contract verdicts, both handler tests that mock
+  the service and assert the handler's response. The judge calls that an
+  assertion against a mock configured in the same test, which its prompt tells
+  it to. Whether a handler test that mocks its service is a weak test is the
+  owner's call; see Open questions.
+- The agent, denied `DATABASE_URL=... npm test`, retried with
+  `dangerouslyDisableSandbox`, and tried `git stash`. Both denied.
+- Still unmeasured: what the agent does when Stop does hold it. Trial 2.
+
 `orders-admin` is on the current version, with the working Stop hook. Build an
 actual feature there with the hooks live, and record what nothing else can show:
 
@@ -1242,6 +1261,13 @@ designed.
 
 ## Open questions
 
+- **Is a handler test that mocks its service weak?** Trial 1's judge said yes
+  twice: "responds 409 when the order is not a draft" passes even if the
+  service stopped detecting non-drafts, because the service is mocked. True, and
+  it is also the ordinary way to test one layer. Either the judge reads a
+  description as a claim about the layer the test targets, or descriptions must
+  name the layer ("maps an invalid transition to 409"). The first quiets it; the
+  second keeps it strict and puts the burden on test authors.
 - **Auth provider.** Cognito is the current guess. Affects the auth rule pack.
 - **Whether descriptions should be required on every test,** or only on tests
   above some complexity. Requiring them everywhere risks ceremony on trivial

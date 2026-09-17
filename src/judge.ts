@@ -120,17 +120,23 @@ function run(
   timeoutMs: number,
 ): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    execFile(
+    const child = execFile(
       "claude",
       args,
       { timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024 },
       (err, stdout, stderr) => {
         // A non-zero exit still often carries a parseable JSON envelope, so
         // hand stdout back and let the caller decide.
-        if (err && !stdout) reject(err);
-        else resolve({ stdout, stderr });
+        if (err && !stdout) {
+          // Not err.message: it quotes the whole command line, prompt included.
+          const why = err.killed ? `timed out after ${timeoutMs}ms` : `exited ${err.code ?? "abnormally"}`;
+          reject(new Error(`claude ${why}${stderr ? `: ${stderr.trim().slice(0, 300)}` : ""}`));
+        } else resolve({ stdout, stderr });
       },
     );
+    // The prompt is an argument. Left open, stdin makes every call wait 3s for
+    // input that never comes, which a Stop hook judging thirty things pays in full.
+    child.stdin?.end();
   });
 }
 

@@ -241,7 +241,9 @@ is told cannot drift from what the gate enforces. What each one runs by default:
   steers. If a rule is broken, the agent is not allowed to finish and is told
   why while it still has the context that produced the code. It blocks once,
   then tells you and lets the turn end, so it can never trap a session. You
-  hear from it only then, or if a check could not run; a clean turn is silent.
+  hear from it only then, or if a check could not run or finish; a clean turn
+  is silent. Judging stops starting new work after three minutes, and whatever
+  it did not reach is judged at the end of the next turn.
   It runs only the scanners that enforce a corpus rule on the changed files.
 - **On commit** checks staged files and refuses the commit on an error. It
   lives in a committed `hooks/` directory, and the `prepare` script points git

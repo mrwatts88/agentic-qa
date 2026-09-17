@@ -206,6 +206,12 @@ grounding needs.
 - **Stop runs the paid tiers only when it can tell what changed.** Outside a git
   repo there is no working-tree scope, and judging the whole repo on every turn
   is a surprise on someone's bill. Mechanical still runs; judgment does not.
+- **Stop finishes inside its hook timeout, whatever the turn changed.** A hook
+  past its timeout is cancelled with nothing reported: the first real feature
+  built in `orders-admin` went entirely unchecked that way. Stop starts no
+  judgment after `JUDGING_WINDOW_MS`, tells the person what it left unjudged or
+  failed to judge, and the cached ledger picks the rest up next turn. A test
+  holds the window plus the judge's timeout inside the timeout `init` writes.
 - **Nothing that writes a ledger may run from a hook that can fire
   concurrently.** Tool hooks such as PostToolUse fire inside subagents too, and
   parallel subagents have no documented ordering, so two copies can run at once.

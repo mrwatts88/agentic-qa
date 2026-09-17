@@ -9,6 +9,11 @@ export async function pool<T, R>(
   items: T[],
   limit: number,
   fn: (item: T) => Promise<R>,
+  /**
+   * Epoch ms after which no new item starts; work already running finishes.
+   * Items never started are left undefined in the results.
+   */
+  deadline?: number,
 ): Promise<R[]> {
   const results: R[] = new Array(items.length);
   let cursor = 0;
@@ -17,6 +22,7 @@ export async function pool<T, R>(
     { length: Math.max(1, Math.min(limit, items.length)) },
     async () => {
       while (cursor < items.length) {
+        if (deadline !== undefined && Date.now() >= deadline) return;
         const index = cursor++;
         results[index] = await fn(items[index]);
       }

@@ -21,6 +21,8 @@ export interface CheckOptions {
   /** Restrict to these repo-relative files (e.g. the staged set). */
   only?: string[];
   json: boolean;
+  /** Epoch ms after which no new judgment starts. */
+  deadline?: number;
 }
 
 export interface CheckSummary {
@@ -30,6 +32,10 @@ export interface CheckSummary {
   unverifiable: ContractRecord[];
   costUsd: number;
   failed: boolean;
+  /** Tests due a judgment that was not started before the deadline. */
+  unjudged: number;
+  /** Judgments that were attempted and failed. */
+  errors: string[];
 }
 
 /** Shared by every command that needs to know what tests exist. */
@@ -75,9 +81,11 @@ export async function checkContracts(
   }
 
   let costUsd = 0;
+  let started = 0;
   const errors: string[] = [];
 
   await pool(pending, config.judge.concurrency, async (test) => {
+    started++;
     try {
       const result = await judgeContract(test, config);
       costUsd += result.costUsd;
@@ -99,7 +107,7 @@ export async function checkContracts(
     } catch (err) {
       errors.push(`${test.id}: ${(err as Error).message}`);
     }
-  });
+  }, options.deadline);
 
   // Only prune when we looked at the whole suite; a scoped run has no view
   // of tests outside its scope and must not delete their verdicts.
@@ -110,13 +118,15 @@ export async function checkContracts(
   const violated = live.filter((r) => r.verdict === "violated");
   const unverifiable = live.filter((r) => r.verdict === "unverifiable");
 
-  for (const err of errors) {
-    process.stderr.write(pc.yellow(`judge error  ${err}\n`));
+  if (!options.json) {
+    for (const err of errors) process.stderr.write(pc.yellow(`judge error  ${err}\n`));
   }
 
   return {
-    checked: pending.length,
+    checked: started,
     cached: tests.length - pending.length,
+    unjudged: pending.length - started,
+    errors,
     violated,
     unverifiable,
     costUsd,

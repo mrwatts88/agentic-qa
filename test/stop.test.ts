@@ -254,6 +254,21 @@ describe("the Stop hook", () => {
   });
 
   /**
+   * A judgment that did not happen must not read as a clean one. Here the
+   * window has already closed, so nothing due is judged, and the person hears.
+   */
+  it("tells the person what it had no time to judge, and does not block for it", async () => {
+    git("init");
+    write("api/orders.ts", "export async function getOrder(id: string) {\n  return db.orders.find(id);\n}\n");
+
+    await runStop(dir, { ...FIRST, judgment: true, judgingWindowMs: -1 });
+    const payload = JSON.parse(output);
+
+    expect(payload.decision).toBeUndefined();
+    expect(payload.systemMessage).toContain("not judged within Stop's time");
+  });
+
+  /**
    * The statement alone names a principle, not a fix. The judge's reason is the
    * only part that says what it saw in this file, so a block without it leaves
    * the agent guessing.

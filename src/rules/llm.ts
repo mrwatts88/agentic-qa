@@ -148,6 +148,10 @@ export interface LlmSummary {
   costUsd: number;
   /** qa-ignore comments that matched a violation but did not count. */
   refused: RefusedException[];
+  /** Judgments due but not started before the deadline. */
+  unjudged: number;
+  /** Judgments that were attempted and failed. */
+  errors: string[];
 }
 
 export async function runLlmRules(
@@ -160,6 +164,8 @@ export async function runLlmRules(
   scoped = false,
   /** Which exceptions count; every one unless an automatic call site says otherwise. */
   gate = new ExceptionGate(),
+  /** Epoch ms after which no new judgment starts. */
+  deadline?: number,
 ): Promise<LlmSummary> {
   const ledger = loadLlmLedger(cwd);
   const model = config.judge.model;
@@ -194,9 +200,11 @@ export async function runLlmRules(
   }
 
   let costUsd = 0;
+  let started = 0;
   const errors: string[] = [];
 
   await pool(jobs, config.judge.concurrency, async (job) => {
+    started++;
     try {
       const result = await judgeRule(job.rule, job.file, job.text, config);
       costUsd += result.costUsd;
@@ -215,7 +223,7 @@ export async function runLlmRules(
     } catch (err) {
       errors.push(`${job.rule.id} on ${job.file}: ${(err as Error).message}`);
     }
-  });
+  }, deadline);
 
   for (const err of errors) {
     process.stderr.write(pc.yellow(`rule judge error  ${err}\n`));
@@ -270,5 +278,7 @@ export async function runLlmRules(
     skipped,
     costUsd,
     refused: gate.refused(),
+    unjudged: jobs.length - started,
+    errors,
   };
 }

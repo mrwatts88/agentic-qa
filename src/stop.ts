@@ -36,6 +36,8 @@ export interface StopOptions {
   judgment?: boolean;
   /** The engines to run; the policy's by default. Tests pass the fast ones. */
   adapters?: Adapter[];
+  /** How long to keep starting judgments; JUDGING_WINDOW_MS by default. */
+  judgingWindowMs?: number;
 }
 
 /**
@@ -55,6 +57,15 @@ function emit(payload: unknown): void {
   process.stdout.write(JSON.stringify(payload) + "\n");
 }
 
+/**
+ * How long Stop keeps starting judgments. A turn that changed a lot can need
+ * dozens, and a hook that runs past its timeout is cancelled with nothing
+ * reported, which checks less than stopping early would. What is not judged
+ * this turn is judged at the next one's end, since verdicts are cached. Kept
+ * well inside STOP_HOOK_TIMEOUT_S with room for a judgment already running.
+ */
+export const JUDGING_WINDOW_MS = 180_000;
+
 const FIX_OR_EXCUSE = `Fix these before finishing.\n${EXCEPTIONS_ARE_APPROVED}`;
 
 /**
@@ -69,6 +80,18 @@ export function judgedLines(f: Pick<Finding, "file" | "line" | "statement" | "ru
     ...(f.excerpt ? [`  What the judge saw: ${f.excerpt}`] : []),
     ...(f.rationale ? [`  Why it matters: ${f.rationale}`] : []),
   ].join("\n");
+}
+
+/** What a judgment tier left undone this turn, worded for the person. */
+function unfinished(what: string, unjudged: number, errors: string[]): string[] {
+  return [
+    ...(unjudged
+      ? [`agentic-qa: ${unjudged} ${what}(s) not judged within Stop's time; they will be at the end of the next turn.`]
+      : []),
+    ...(errors.length
+      ? [`agentic-qa: ${errors.length} ${what}(s) failed to judge, so were not checked: ${errors[0]}`]
+      : []),
+  ];
 }
 
 export async function runStop(cwd: string, options: StopOptions): Promise<number> {
@@ -109,10 +132,13 @@ export async function runStop(cwd: string, options: StopOptions): Promise<number
     // fails a pattern, and the pattern findings are the ones worth fixing first.
     const blocked = mechanical.some((f) => f.severity === "error");
     const judgment = options.judgment !== false;
+    const deadline = Date.now() + (options.judgingWindowMs ?? JUDGING_WINDOW_MS);
+    const incomplete: string[] = [];
     if (!blocked && judgment && scope) {
       if (policy.llm) {
-        const llm = await runLlmRules(cwd, files, rules, config, false, true, gate);
+        const llm = await runLlmRules(cwd, files, rules, config, false, true, gate, deadline);
         for (const f of llm.findings) findings.push(judgedLines(f));
+        incomplete.push(...unfinished("rule judgment", llm.unjudged, llm.errors));
       }
 
       if (policy.contracts) {
@@ -121,7 +147,9 @@ export async function runStop(cwd: string, options: StopOptions): Promise<number
           all: false,
           only: scope,
           json: true,
+          deadline,
         });
+        incomplete.push(...unfinished("test contract", contracts.unjudged, contracts.errors));
         for (const r of contracts.violated) {
           findings.push(`- ${r.file} claims "${r.description}" — ${r.reason}`);
         }
@@ -154,6 +182,8 @@ export async function runStop(cwd: string, options: StopOptions): Promise<number
             ? ["", "These qa-ignore comments are not committed, so they do not count:", ...refusedLines(refused)]
             : []),
         ].join("\n"),
+        // A check that did not finish is the person's to know, blocked or not.
+        ...(incomplete.length ? { systemMessage: incomplete.join("\n") } : {}),
       });
       return 0;
     }
@@ -170,6 +200,7 @@ export async function runStop(cwd: string, options: StopOptions): Promise<number
           ]
         : []),
       ...refusedSection,
+      ...incomplete,
       ...unenforced.map((u) => `agentic-qa: ${u}`),
     ];
     if (message.length) emit({ systemMessage: message.join("\n") });
