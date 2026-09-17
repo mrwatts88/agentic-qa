@@ -13,8 +13,8 @@ import { ignoreLinesAt, ignoreLinesInFile } from "./ignore.js";
  * that act.
  *
  * So there are two policies. Commit and CI honour every exception they see,
- * since what they see is staged or committed. The automatic call sites — the
- * per-edit hook and Stop — honour only an exception whose comment line is
+ * since what they see is staged or committed. Stop, the automatic call site,
+ * honours only an exception whose comment line is
  * unchanged since `HEAD`.
  */
 export interface ExceptionPolicy {

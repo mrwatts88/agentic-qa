@@ -22,10 +22,11 @@ call site is a flag:
 | flag | installs |
 | --- | --- |
 | `--git-hook` | a tracked `hooks/pre-commit`, plus the `prepare` script that activates it |
-| `--claude-hook` | `PostToolUse` and `Stop` hooks in `.claude/settings.json` |
+| `--claude-hook` | a `Stop` hook in `.claude/settings.json` |
 
 Already set up by an older version? `init --force` replaces the hook wiring so
-you pick up call sites added since. It never replaces `qa.config.yaml` or a
+you pick up call sites added or removed since — including the per-edit hook,
+which no longer exists. It never replaces `qa.config.yaml` or a
 `prepare` script you wrote — those are yours. Without `--force`, anything that
 already exists is left alone and reported, so you can see what you are missing.
 
@@ -109,8 +110,7 @@ localStorage.setItem("authToken", token); // qa-ignore: fe.storage.no-token-in-l
 That hatch matters: without it, the first false positive gets the whole checker
 disabled instead of the one rule.
 
-An exception takes effect once it is **committed**. The per-edit hook and the
-Stop hook ignore a `qa-ignore` added or changed since the last commit, so the
+An exception takes effect once it is **committed**. The Stop hook ignores a `qa-ignore` added or changed since the last commit, so the
 finding still stands, and Stop shows you every one it refused. That stops a
 blocked agent from writing its own way out. Commit and CI honour every exception
 they see. Because an agent with an unrestricted shell can commit too, set Claude
@@ -202,18 +202,15 @@ instead.
 
 ## Where it runs
 
-Four call sites, each its own command, all in the same binary, so what the agent
+Three call sites, each its own command, all in the same binary, so what the agent
 is told cannot drift from what the gate enforces. What each one runs by default:
 
 | call site | command | scanners | judgment rules | test contracts |
 | --- | --- | --- | --- | --- |
-| after each edit | `agentic-qa hook` | eslint, dependency-cruiser, gitleaks | no | no |
 | end of each turn | `agentic-qa stop` | eslint, dependency-cruiser, gitleaks, opengrep | yes | yes |
 | on commit | `agentic-qa commit` | eslint, dependency-cruiser, gitleaks | no | no |
 | CI | `agentic-qa ci` | eslint, dependency-cruiser, gitleaks, opengrep | yes | yes |
 
-- **After each edit** checks the file just edited and reports to Claude. It never
-  blocks and takes under a second. opengrep takes seconds, so it is left out.
 - **End of each turn** checks everything the turn changed, and is the one that
   steers. If a rule is broken, the agent is not allowed to finish and is told
   why while it still has the context that produced the code. It blocks once,
@@ -245,10 +242,8 @@ callSites:
 a later version stays out of the quick call sites without any config change.
 Skipping a scanner leaves the rules it enforces to the other call sites.
 
-Two cells cannot be changed: the per-edit hook and the commit hook never run the
-judgment rules or test contracts. The first can run several copies at once, and
-those tiers write committed files; the second must never cost money or wait on a
-model. A misspelled call site, setting or scanner name is an error, not ignored.
+Two cells cannot be changed: the commit hook never runs the judgment rules or
+test contracts, because a commit must never cost money or wait on a model. A misspelled call site, setting or scanner name is an error, not ignored.
 
 ### CI
 

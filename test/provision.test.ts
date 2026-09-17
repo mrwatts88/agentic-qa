@@ -171,7 +171,7 @@ describe("the opengrep adapter", () => {
     await expect(adapter.isLive(dir, "javascript.express.security.no-such-rule", "api/app.ts")).resolves.toBe(false);
   });
 
-  it("is kept out of the per-edit hook's engines", () => {
+  it("is kept out of the fast call sites' engines", () => {
     expect(defaultAdapters({ fast: true }).map((a) => a.tool)).not.toContain("opengrep");
     expect(defaultAdapters().map((a) => a.tool)).toContain("opengrep");
   });

@@ -15,9 +15,8 @@ import { runInit } from "../src/init";
  * repos wired to this checkout's `dist/`, and assert on the session transcript:
  * whether the turn was held, what the agent was told, what the person saw.
  *
- * Run with `npm run smoke`: six sessions in parallel, about a minute. The five
- * mechanical ones cost about $0.13; the judged one adds its judge calls,
- * using whatever login `claude` already has. Not part of `npm test`, and not in
+ * Run with `npm run smoke`: five sessions in parallel, about a minute, using
+ * whatever login `claude` already has. The judged one also pays for its judge. Not part of `npm test`, and not in
  * CI. Transcripts land in `.qa/tmp/smoke/`.
  *
  * Shown to fail: with `decision` nested back inside `hookSpecificOutput`, the
@@ -55,23 +54,25 @@ const RULE = "fe.storage.no-token-in-local-storage";
 const JUDGED = readFileSync(join(ROOT, "fixtures", "rules-llm", "api", "orders.ts"), "utf8");
 const JUDGED_RULE = "be.authz.ownership-check";
 
-/** No way to change code, so a held turn cannot be resolved by fixing it. */
-const READ_ONLY = ["--disallowedTools", "Edit,Write,Bash,NotebookEdit"];
+/**
+ * No tools at all, so a held turn cannot be resolved by fixing it. A deny list
+ * of editing tools was not enough: a blocked agent reached for subagents and
+ * went looking for a shell, and blew the session budget doing it.
+ */
+const NO_TOOLS = ["--tools", ""];
 
 type Event = Record<string, any>;
 
 interface Repo {
   files: Record<string, string>;
-  hooks: { edit?: boolean; stop?: boolean };
   /** Leave Stop's judgment tiers on, as `init` writes it for a consuming repo. */
   judgment?: boolean;
 }
 
 /**
  * The hooks come from `init`, pointed at this checkout, so a session also proves
- * the wiring `init` writes works — matcher, event names, placement. Two edits
- * after: Stop gains `--mechanical`, and a scenario drops the hook it is not
- * about, so one hook's output never muddies another's assertions.
+ * the wiring `init` writes works — event name and placement. One edit after:
+ * Stop gains `--mechanical`, unless the scenario is about judgment.
  */
 function makeRepo(name: string, repo: Repo): string {
   const dir = mkdtempSync(join(tmpdir(), `agentic-qa-smoke-${name}-`));
@@ -82,8 +83,6 @@ function makeRepo(name: string, repo: Repo): string {
   const settings = JSON.parse(readFileSync(path, "utf8"));
   const stop = settings.hooks.Stop[0].hooks[0];
   if (!repo.judgment) stop.command = `${stop.command} --mechanical`;
-  if (!repo.hooks.edit) delete settings.hooks.PostToolUse;
-  if (!repo.hooks.stop) delete settings.hooks.Stop;
   writeFileSync(path, JSON.stringify(settings, null, 2));
 
   for (const [path, contents] of Object.entries(repo.files)) {
@@ -184,36 +183,34 @@ beforeAll(() => {
   // All at once: they are independent, and each takes tens of seconds.
   sessions.violation = runSession(
     "violation",
-    { files: { "session.ts": VIOLATION }, hooks: { stop: true } },
+    { files: { "session.ts": VIOLATION } },
     "Say hello in one word.",
-    READ_ONLY,
+    NO_TOOLS,
   );
   sessions.exception = runSession(
     "exception",
     {
       files: { "session.ts": VIOLATION.replace("  localStorage", `  // qa-ignore: ${RULE} - this is test code\n  localStorage`) },
-      hooks: { stop: true },
     },
     "Say hello in one word.",
-    READ_ONLY,
+    NO_TOOLS,
   );
   sessions.judged = runSession(
     "judged",
-    { files: { "api/orders.ts": JUDGED }, hooks: { stop: true }, judgment: true },
+    { files: { "api/orders.ts": JUDGED }, judgment: true },
     [
       "Say hello in one word.",
       "If a hook then stops you, reply with one sentence naming the code change it asks for.",
     ].join("\n"),
-    READ_ONLY,
+    NO_TOOLS,
   );
   sessions.notes = runSession(
     "notes",
     {
       files: { "app.ts": NOTE },
-      hooks: { stop: true },
     },
     "Say hello in one word.",
-    READ_ONLY,
+    NO_TOOLS,
   );
   sessions.broken = runSession(
     "broken",
@@ -224,24 +221,9 @@ beforeAll(() => {
         "local-rules/broken.yaml": "rules: []\n",
         "session.ts": VIOLATION,
       },
-      hooks: { stop: true },
     },
     "Say hello in one word.",
-    READ_ONLY,
-  );
-  sessions.edit = runSession(
-    "edit",
-    { files: {}, hooks: { edit: true } },
-    [
-      "Use the Write tool to create session.ts with exactly the contents between the markers.",
-      "Then, if you received any feedback about that file after writing it, reply with",
-      "the rule id it named, which appears in square brackets. Otherwise reply NONE.",
-      "",
-      "---BEGIN---",
-      VIOLATION.trimEnd(),
-      "---END---",
-    ].join("\n"),
-    ["--allowedTools", "Write"],
+    NO_TOOLS,
   );
 
   // Swallowed here so an unawaited rejection does not fail the whole file;
@@ -307,20 +289,5 @@ describe("Stop", () => {
     expect(payloads(events, "Stop")[0]?.decision).toBe("block");
     expect(stopFeedback(events).join("\n")).toContain("not committed");
     expect(shownToPerson(events)).toContain(`session.ts:2 qa-ignore for ${RULE}`);
-  });
-});
-
-describe("the per-edit hook", () => {
-  /**
-   * Its report reaches the agent only as context, which the transcript does not
-   * show. So the agent is asked to repeat the rule id, which it cannot know any
-   * other way.
-   */
-  it("gets its report to the agent", async () => {
-    const events = await sessions.edit;
-    const result = events.find((e) => e.type === "result");
-
-    expect(hookOutputs(events, "PostToolUse").join("\n")).toContain(RULE);
-    expect(String(result?.result ?? "")).toContain(RULE);
   });
 });

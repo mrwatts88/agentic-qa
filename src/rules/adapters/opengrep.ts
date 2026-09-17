@@ -15,7 +15,7 @@ import { ensureBinary, ensureSemgrepRules, OPENGREP, SEMGREP_RULES } from "../..
  * cannot.
  *
  * Slow: most of a run is loading rules, about 4s for the TypeScript and
- * JavaScript sets. So it is kept out of the per-edit hook, and it loads only
+ * JavaScript sets. So it is kept out of the commit hook, and it loads only
  * the rule sets for the kinds of file actually being checked.
  */
 

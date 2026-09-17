@@ -8,7 +8,7 @@ import { runEval } from "./contracts/evaluate.js";
 import { groundAll } from "./contracts/mutate.js";
 import { loadLedger, saveLedger } from "./contracts/ledger.js";
 import { loadRules } from "./rules/load.js";
-import { runHook, readHookPayload } from "./hook.js";
+import { readHookPayload } from "./hook.js";
 import { runStop } from "./stop.js";
 import { runInit, installHooks, prepareLine } from "./init.js";
 import { selectFiles } from "./rules/select.js";
@@ -24,7 +24,6 @@ Usage:
   agentic-qa init [options]         write qa.config.yaml; add call sites only if asked
   agentic-qa install-hooks          point core.hooksPath at hooks/ (run from prepare)
   agentic-qa setup                  download the pinned scanners and rules now
-  agentic-qa hook                   PostToolUse hook: report on what just changed
   agentic-qa stop                   Stop hook: check the whole turn, block once on findings
   agentic-qa commit                 pre-commit hook: check staged files; exits 1 on errors
   agentic-qa ci                     CI: check the whole repo, judgment tiers included
@@ -36,7 +35,7 @@ Usage:
 
 Options:
   --git-hook          (init) commit gate: tracked hooks/pre-commit + prepare script
-  --claude-hook       (init) Claude Code PostToolUse and Stop hooks in .claude/settings.json
+  --claude-hook       (init) Claude Code Stop hook in .claude/settings.json
   --force             (init) replace existing hook wiring; never touches qa.config.yaml
   --all               re-judge every contract, ignoring the cached ledger
   --staged            only tests in files staged in git
@@ -96,11 +95,10 @@ async function main(): Promise<number> {
   // there rather than wherever the shell happened to be left.
   const hookCwd = process.env.CLAUDE_PROJECT_DIR || cwd;
 
-  // Always succeeds: it reports to the agent, it does not gate anything.
-  if (command === "hook") {
-    const { filePath } = await readHookPayload();
-    return runHook(hookCwd, filePath);
-  }
+  // The retired per-edit hook. Answers silently rather than as an unknown
+  // command, so a repo whose settings still call it does not error on every
+  // edit before it re-runs `init --claude-hook --force`.
+  if (command === "hook") return 0;
 
   // Also always exits zero: it blocks through the decision field, not the exit
   // code, so a crash here can never trap a turn.
@@ -198,7 +196,7 @@ async function main(): Promise<number> {
     if (!gitHook || !claudeHook) {
       const offer = [
         gitHook ? null : "  --git-hook      gate commits on the free mechanical tier",
-        claudeHook ? null : "  --claude-hook   report violations back to Claude after each edit",
+        claudeHook ? null : "  --claude-hook   stop Claude finishing a turn that breaks a rule",
       ].filter(Boolean);
       process.stdout.write(
         pc.dim(`\nNot installed. Re-run init with a flag to opt in:\n${offer.join("\n")}\n`),

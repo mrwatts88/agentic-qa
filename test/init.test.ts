@@ -91,15 +91,17 @@ describe("init", () => {
     expect(hooksPath(dir)).toBeUndefined();
   });
 
-  it("registers the agent hook on Edit and Write", () => {
+  /**
+   * Removed: nearly all it said was gauntlet noise, which taught the agent to
+   * skip hook output. Stop enforces the corpus on every change instead.
+   */
+  it("does not register a per-edit hook", () => {
     runInit(dir, "npx agentic-qa", BOTH);
     const settings = JSON.parse(
       readFileSync(join(dir, ".claude/settings.json"), "utf8"),
     );
 
-    const entry = settings.hooks.PostToolUse[0];
-    expect(entry.matcher).toBe("Edit|Write");
-    expect(entry.hooks[0].command).toBe("npx agentic-qa hook");
+    expect(Object.keys(settings.hooks)).toEqual(["Stop"]);
   });
 
   /**
@@ -318,8 +320,8 @@ describe("init", () => {
       readFileSync(join(dir, ".claude/settings.json"), "utf8"),
     );
 
-    expect(settings.hooks.PostToolUse[0].hooks[0].command).toBe(
-      "node dist/cli.js hook",
+    expect(settings.hooks.Stop[0].hooks[0].command).toBe(
+      "node dist/cli.js stop",
     );
     expect(readFileSync(join(dir, "hooks/pre-commit"), "utf8")).toContain(
       "node dist/cli.js commit",

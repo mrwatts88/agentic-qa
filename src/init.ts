@@ -64,22 +64,8 @@ function claudeSettings(runner: string): string {
     JSON.stringify(
       {
         hooks: {
-          PostToolUse: [
-            {
-              matcher: "Edit|Write",
-              hooks: [
-                {
-                  type: "command",
-                  command: `${runner} hook`,
-                  timeout: 30,
-                  statusMessage: "agentic-qa: checking rules",
-                },
-              ],
-            },
-          ],
-          // No matcher: Stop fires once when the agent finishes a turn. This is
-          // the one that can gate, and the one that sees changes the per-edit
-          // hook's Edit|Write matcher never observes.
+          // No matcher: Stop fires once when the agent finishes a turn, and
+          // sees every change the turn made, however it was made.
           Stop: [
             {
               hooks: [

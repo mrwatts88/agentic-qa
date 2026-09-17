@@ -87,7 +87,8 @@ grounding needs.
 - `src/rules/evaluate.ts` — scores both rule tiers against a known-answer file.
 - `src/pool.ts` — shared bounded concurrency. Not for mutations, which must
   stay serial.
-- `src/hook.ts` — the PostToolUse hook. Reports to the model, never gates.
+- `src/hook.ts` — what the Claude Code hooks share: payload reading, changed
+  files, exception wording. The per-edit hook that lived here is removed.
 - `src/stop.ts` — the Stop hook. Checks everything the turn changed and blocks
   the agent from finishing while findings stand, at most once per turn.
 - `src/init.ts` — installs the call sites into a repo. Never overwrites.
@@ -96,10 +97,10 @@ grounding needs.
 
 ## Invariants
 
-**Decided, not yet built:** the per-edit hook is being removed, the automatic
-call sites will enforce only the corpus, and the gauntlet will run on demand.
-Several invariants below change when that lands; ROADMAP Next item 1 lists
-which. Until then they describe the code as it is.
+**Decided, partly built:** the per-edit hook is removed; the automatic call
+sites will enforce only the corpus, and the gauntlet will run on demand. The
+invariants about gauntlet warnings and Stop's notes change when that lands;
+ROADMAP Next item 1 lists them. Until then they describe the code as it is.
 
 - **The enforcement ladder.** Every rule declares the cheapest tier that can
   enforce it: `mechanical` (lint, tsc, dependency-cruiser, semgrep) before
@@ -116,8 +117,8 @@ which. Until then they describe the code as it is.
   test asserts that rule is still live in the tool's config, so dropping a plugin
   fails a test naming the promises it broke. Findings from corpus rules are
   errors and block; findings from the gauntlet are warnings and never block.
-- **One CLI, four call sites.** The per-edit hook, the turn-boundary hook, git
-  hooks, and CI all invoke this same binary. Never fork the logic per call site,
+- **One CLI, three call sites.** The turn-boundary hook, the git hook, and CI
+  all invoke this same binary. Never fork the logic per call site,
   or the rules the agent is told about drift from the rules the gate enforces.
 - **What a call site runs is its row in `src/sites.ts`, never code of its own.**
   Defaults choose scanners by property (`slow`), never by name, so a slow engine
@@ -165,15 +166,15 @@ which. Until then they describe the code as it is.
   in a `finally`, always.
 - **Mutation grounding edits the implementation, never a test.** A test edited
   to pass proves nothing.
-- **The PostToolUse hook always exits zero.** It fires after the tool has
-  already run, so a non-zero exit cannot undo anything and only stops the turn.
-  Findings reach the model through `hookSpecificOutput.additionalContext`, which
-  is what Claude actually reads. `continueOnBlock`, `decision` and `reason` do
-  not apply to this event.
-- **The hook reports only on the file just edited**, falling back to the working
-  tree's changes when no path is given. Complaining about pre-existing
-  violations in code the agent never touched is noise, and noise gets the hook
-  uninstalled. Repo-wide is fast enough, but speed was never the constraint.
+- **There is no per-edit hook, on purpose.** Nearly everything it said was
+  gauntlet noise, and the agent learned to skip hook output altogether, which
+  makes the corpus worthless too. Stop sees every change however it was made.
+  The cost, accepted: a subagent learns about the corpus only when the main
+  agent's Stop catches its edits. `agentic-qa hook` still exits zero silently,
+  so a repo whose settings predate the removal does not error on every edit.
+- **Stop checks what the turn changed, not the whole repo.** Complaining about
+  pre-existing violations in code the agent never touched is noise, and noise
+  gets the hook uninstalled.
 - **The Stop hook blocks at most once per turn.** `stop_hook_active` is true
   when a Stop hook has already held this turn; blocking again from there is how
   a session becomes unable to finish, which is far worse than a noisy report.
@@ -189,7 +190,7 @@ which. Until then they describe the code as it is.
 - **A hook contract is verified by running a real session.** Reading the docs
   produced the nested-`decision` bug, and tests that assert the emitted JSON
   only prove it was emitted. Run `npm run smoke` before committing any change
-  to what `src/hook.ts`, `src/stop.ts` or the settings `init` writes emit, and
+  to what `src/stop.ts` or the settings `init` writes emit, and
   add a scenario to `smoke/hooks.smoke.ts` for any new behaviour. Their inputs
   live in `fixtures/smoke/`, because they break rules on purpose.
 - **Stop runs the ladder at runtime: mechanical first, and no judgment pass at
@@ -200,13 +201,12 @@ which. Until then they describe the code as it is.
   repo there is no working-tree scope, and judging the whole repo on every turn
   is a surprise on someone's bill. Mechanical still runs; judgment does not.
 - **Nothing that writes a ledger may run from a hook that can fire
-  concurrently.** PostToolUse fires inside subagents as well as the main
-  conversation, and parallel subagents have no documented ordering, so two
-  copies can run at once. The mechanical tier is safe there because it is
-  stateless and read-only. The judgment tiers write `.qa/rules.json` and
-  `.qa/contracts.json`, and a lost write there is a verdict silently discarded
-  from a committed file, so they belong only in `Stop` — which fires once, for
-  the main agent, at the end of a turn.
+  concurrently.** Tool hooks such as PostToolUse fire inside subagents too, and
+  parallel subagents have no documented ordering, so two copies can run at once.
+  The judgment tiers write `.qa/rules.json` and `.qa/contracts.json`, and a lost
+  write there is a verdict silently discarded from a committed file, so they
+  belong only in `Stop` — which fires once, for the main agent, at the end of a
+  turn. Relevant again the moment anyone adds a tool hook back.
 - **Hooks anchor to `CLAUDE_PROJECT_DIR`, not the process cwd.** Claude Code
   runs hooks in the session's current directory, which moves whenever the agent
   `cd`s. This repo's own Stop hook once failed with "cannot find module
@@ -271,10 +271,10 @@ which. Until then they describe the code as it is.
   every file its globs match, and most are irrelevant to it. Forcing a binary
   answer manufactures false positives. Any new llm rule needs fixture cases
   asserting it stays quiet about files it has nothing to say about.
-- **Slow engines stay out of the per-edit hook.** An adapter marked `slow`
-  (opengrep) runs at Stop, on commit and in CI; its corpus rules still block at
-  the turn boundary. The per-edit hook fires on every edit, and seconds there
-  get the hook uninstalled.
+- **Slow engines stay out of the commit hook by default.** An adapter marked
+  `slow` (opengrep) runs at Stop and in CI, where its corpus rules still block.
+  Every commit pays for whatever the commit hook runs, a person's as much as an
+  agent's.
 - **Never commit the semgrep community rules.** Their license forbids
   redistribution and this repository is public. They are downloaded into the
   per-machine cache, pinned by commit, like the scanner binaries, which are
@@ -292,7 +292,7 @@ which. Until then they describe the code as it is.
   exact line there would make the hatch work only by luck.
   Both tiers share `src/rules/ignore.ts` so they cannot drift on what an
   exception looks like.
-- **Only a person makes an exception.** The per-edit hook and Stop honour a
+- **Only a person makes an exception.** Stop honours a
   `qa-ignore` only when its comment line is unchanged since `HEAD` (staged is
   not committed), and Stop shows every refused one to the person. A blocked
   agent was observed proposing one with a false reason; nothing can check a
@@ -330,7 +330,7 @@ which. Until then they describe the code as it is.
   with the rule id and why it is or is not legitimate. Silently skimming past
   noise is exactly the failure this system exists to prevent in its users.
 - **Never add a `qa-ignore` to get past a finding.** Not to release a Stop
-  block, not to quiet the per-edit hook, and not with a reason that sounds
+  block, not to quiet a scanner, and not with a reason that sounds
   right. If a finding looks wrong, say so to the person and let them decide; an
   exception is theirs to make, and it counts once they commit it. The same goes
   for `--no-verify`, loosening a rule, or narrowing a scope to make a finding go

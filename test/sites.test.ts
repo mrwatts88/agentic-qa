@@ -11,7 +11,7 @@ import {
   renderSiteTable,
 } from "../src/sites";
 import { loadConfig } from "../src/config";
-import { runHook } from "../src/hook";
+import { runCommit } from "../src/gate";
 import type { Adapter } from "../src/rules/adapters/types";
 
 function engine(tool: string, slow = false): Adapter {
@@ -28,8 +28,7 @@ const REGISTRY = [engine("eslint"), engine("gitleaks"), engine("opengrep", true)
 const tools = (adapters: Adapter[]) => adapters.map((a) => a.tool);
 
 describe("the default policy", () => {
-  it("keeps slow engines out of the per-edit hook and the commit hook", () => {
-    expect(tools(adaptersFor(DEFAULT_POLICY.edit, REGISTRY))).toEqual(["eslint", "gitleaks"]);
+  it("keeps slow engines out of the commit hook", () => {
     expect(tools(adaptersFor(DEFAULT_POLICY.commit, REGISTRY))).toEqual(["eslint", "gitleaks"]);
   });
 
@@ -45,12 +44,12 @@ describe("the default policy", () => {
   it("excludes a newly added slow engine without naming it", () => {
     const registry = [...REGISTRY, engine("newscanner", true)];
 
-    expect(tools(adaptersFor(DEFAULT_POLICY.edit, registry))).not.toContain("newscanner");
+    expect(tools(adaptersFor(DEFAULT_POLICY.commit, registry))).not.toContain("newscanner");
   });
 
-  it.each(["edit", "commit"] as const)("never runs a model at %s", (site) => {
-    expect(DEFAULT_POLICY[site].llm).toBe(false);
-    expect(DEFAULT_POLICY[site].contracts).toBe(false);
+  it("never runs a model on commit", () => {
+    expect(DEFAULT_POLICY.commit.llm).toBe(false);
+    expect(DEFAULT_POLICY.commit.contracts).toBe(false);
   });
 });
 
@@ -84,9 +83,8 @@ describe("repo overrides", () => {
   });
 
   it.each([
-    [{ edit: { llm: true } }, "the per-edit hook can run concurrently"],
-    [{ edit: { contracts: true } }, "the per-edit hook can run concurrently"],
     [{ commit: { llm: true } }, "a commit must not cost money"],
+    [{ commit: { contracts: true } }, "a commit must not cost money"],
   ])("refuses to put a model where an invariant forbids it: %j", (raw, why) => {
     expect(() => parseSiteOverrides(raw)).toThrow(why);
   });
@@ -109,17 +107,17 @@ describe("qa.config.yaml", () => {
   });
 
   it("fails to load when callSites is wrong, rather than ignoring it", () => {
-    writeFileSync(join(dir, "qa.config.yaml"), "callSites:\n  edit:\n    llm: true\n");
+    writeFileSync(join(dir, "qa.config.yaml"), "callSites:\n  commit:\n    llm: true\n");
 
     expect(() => loadConfig(dir)).toThrow("cannot be changed");
   });
 
   /**
-   * A unit test of the table does not prove a call site reads it. The per-edit
+   * A unit test of the table does not prove a call site reads it. The commit
    * hook, with eslint skipped by name, stays quiet about a rule only eslint
    * enforces.
    */
-  it("is what the per-edit hook actually runs", async () => {
+  it("is what the commit hook actually runs", async () => {
     let output = "";
     vi.spyOn(process.stdout, "write").mockImplementation((chunk: any) => {
       output += String(chunk);
@@ -131,12 +129,14 @@ describe("qa.config.yaml", () => {
       'import jwt from "jsonwebtoken";\n\nexport const check = (t: string) => jwt.verify(t, "k", { algorithms: ["none"] });\n',
     );
 
-    await runHook(dir, "auth.ts");
+    execFileSync("git", ["add", "auth.ts"], { cwd: dir });
+
+    await runCommit(dir);
     expect(output).toContain("sec.jwt.no-none-algorithm");
 
     output = "";
-    writeFileSync(join(dir, "qa.config.yaml"), "callSites:\n  edit:\n    skip: [eslint]\n");
-    await runHook(dir, "auth.ts");
+    writeFileSync(join(dir, "qa.config.yaml"), "callSites:\n  commit:\n    skip: [eslint]\n");
+    await runCommit(dir);
     expect(output).not.toContain("sec.jwt.no-none-algorithm");
   });
 });

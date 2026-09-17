@@ -11,8 +11,7 @@ import { opengrep } from "./opengrep.js";
 export const KNOWN_TOOLS = ["eslint", "dependency-cruiser", "gitleaks", "opengrep"];
 
 /**
- * `fast` leaves out the slow engines, for the per-edit hook. Every other call
- * site runs them all.
+ * `fast` leaves out the slow engines, for the commit hook by default.
  */
 export function defaultAdapters(options: { fast?: boolean } = {}): Adapter[] {
   const all = [eslint(), dependencyCruiser(), gitleaks(), opengrep()];

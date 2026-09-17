@@ -14,15 +14,12 @@ import { committedOnly, ExceptionGate } from "./rules/exceptions.js";
 /**
  * The turn boundary: a Stop hook that runs when the agent finishes responding.
  *
- * This is the only agent-facing call site that can actually gate. PostToolUse
- * fires after a tool has already run, so it can report and nothing more; Stop
- * fires before the agent hands control back, so blocking it means the agent
- * fixes the problem while it still holds the context that produced it.
+ * The only agent-facing call site. Stop fires before the agent hands control
+ * back, so blocking it means the agent fixes the problem while it still holds
+ * the context that produced it.
  *
- * It sees the whole turn rather than one file, which closes the hole in the
- * per-edit hook: that one matches Edit and Write, so anything changed another
- * way — a `sed` in Bash, a generator, a lockfile rewritten by an install —
- * never reaches it. The working tree does not care how a file was changed.
+ * It checks the working tree, not a list of edits, so a change made any way —
+ * a `sed` in Bash, a generator, a lockfile rewritten by an install — is seen.
  *
  * It blocks at most once per turn. `stop_hook_active` is true when a Stop hook
  * has already blocked, and blocking again from there is how a session ends up
@@ -60,7 +57,7 @@ function emit(payload: unknown): void {
 
 const FIX_OR_EXCUSE = `Fix these before finishing.\n${EXCEPTIONS_ARE_APPROVED}`;
 
-/** Notes from the slow engines are shown here, since the per-edit hook skips them. */
+/** Notes from the slow engines. Stop stops showing notes at all: ROADMAP Next 1. */
 const NOTE_LIMIT = 15;
 
 /**
@@ -110,8 +107,8 @@ export async function runStop(cwd: string, options: StopOptions): Promise<number
       findings.push(`- ${f.file}:${f.line} ${f.statement} [${f.ruleId}]`);
     }
 
-    // The per-edit hook already showed the fast engines' notes, file by file.
-    // The slow engines run only here, so this is the one place theirs surface.
+    // Only the slow engines' notes, a leftover from when the per-edit hook showed
+    // the fast ones. Due to go: automatic call sites report the corpus only.
     const slowTools = new Set(adapters.filter((a) => a.slow).map((a) => `${a.tool}:`));
     const notes = result.findings.filter(
       (f) => f.origin === "gauntlet" && [...slowTools].some((t) => f.ruleId.startsWith(t)),

@@ -918,9 +918,10 @@ produces more output nobody can rely on.
 Decided; see "Decided, not yet built: the hooks enforce the corpus, and the
 gauntlet is on demand" for the reasoning. To build:
 
-- **Remove the per-edit hook** from what `init --claude-hook` writes, and the
-  `edit` row from `src/sites.ts`. Keep `agentic-qa hook` answering quietly for a
-  while, so a repo whose settings still call it does not error on every edit.
+- **Remove the per-edit hook.** Done: `init --claude-hook` writes Stop only, the
+  `edit` row is gone from `src/sites.ts`, and `agentic-qa hook` exits zero
+  silently so older settings do not error. A config still naming
+  `callSites.edit` now fails to load, as any unknown call site does.
 - **Stop, commit and CI report corpus findings only.** Drop unclaimed scanner
   findings there, and run only the engines that claim a corpus rule routed to
   the files being checked.
@@ -1290,6 +1291,17 @@ designed.
 Recorded so they are thought about deliberately rather than discovered late.
 Each notes where it is likely to be decided — `init` flags, `qa.config.yaml`, or
 both — but none of them is settled.
+
+- **Monorepos.** Routing is by file path, and every corpus trigger today is an
+  extension glob (`**/*.ts`, `**/*.tsx`), so one repo holding a frontend and a
+  backend gets every rule routed to both halves. Mechanical rules cope, because
+  an engine rule only fires on code that matches it. Judgment rules cope in
+  verdict — they answer `not-applicable` — but each routed pair is a judge call,
+  paid once per file version. Separate frontend and backend repos have the same
+  cost today, for the same reason. Undecided: whether triggers should route by
+  package or directory, whether a package gets its own `qa.config.yaml`, where
+  `init` puts hooks when the git root and the package differ, and whether the
+  shipped eslint and dependency-cruiser configs must learn per-package roots.
 
 - **Session-start steering.** A `SessionStart` hook, installed by
   `init --claude-hook`, putting a short form of the guardrails and how to treat

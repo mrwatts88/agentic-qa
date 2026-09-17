@@ -21,7 +21,7 @@ import { defaultAdapters, KNOWN_TOOLS } from "./rules/adapters/index.js";
  * it. Naming an engine is for a repo's overrides, where it is choosing its own
  * trade-off.
  */
-export const CALL_SITES = ["edit", "stop", "commit", "ci"] as const;
+export const CALL_SITES = ["stop", "commit", "ci"] as const;
 export type CallSite = (typeof CALL_SITES)[number];
 
 export interface SitePolicy {
@@ -36,8 +36,6 @@ export interface SitePolicy {
 }
 
 export const DEFAULT_POLICY: Record<CallSite, SitePolicy> = {
-  // Fires on every edit, so seconds here get the hook uninstalled.
-  edit: { scanners: "fast", skip: [], llm: false, contracts: false },
   // The one agent-facing place that can hold the turn; cost, not latency, is
   // what limits it.
   stop: { scanners: "all", skip: [], llm: true, contracts: true },
@@ -50,16 +48,10 @@ export const DEFAULT_POLICY: Record<CallSite, SitePolicy> = {
 };
 
 /**
- * Cells a repo may not change, and why. Both are invariants rather than
- * preferences: the judgment tiers write committed ledgers, and a per-edit hook
- * can run concurrently with itself inside parallel subagents; and a commit must
- * never cost money or wait on a model.
+ * Cells a repo may not change, and why. An invariant rather than a preference:
+ * a commit must never cost money or wait on a model.
  */
 const FIXED: Partial<Record<CallSite, { cells: (keyof SitePolicy)[]; why: string }>> = {
-  edit: {
-    cells: ["llm", "contracts"],
-    why: "the per-edit hook can run concurrently, and the judgment tiers write committed ledgers",
-  },
   commit: {
     cells: ["llm", "contracts"],
     why: "a commit must not cost money or wait on a model",
@@ -144,7 +136,6 @@ export function adaptersFor(policy: SitePolicy, registry: Adapter[] = defaultAda
 }
 
 const LABELS: Record<CallSite, { where: string; command: string }> = {
-  edit: { where: "after each edit", command: "agentic-qa hook" },
   stop: { where: "end of each turn", command: "agentic-qa stop" },
   commit: { where: "on commit", command: "agentic-qa commit" },
   ci: { where: "CI", command: "agentic-qa ci" },

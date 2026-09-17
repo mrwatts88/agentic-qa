@@ -168,9 +168,8 @@ describe("the Stop hook", () => {
   });
 
   /**
-   * The hole this call site exists to close: PostToolUse matches Edit and
-   * Write, so a file changed any other way is never checked. The working tree
-   * does not care how a file came to be different.
+   * A hook matching Edit and Write would never see a file changed any other
+   * way. The working tree does not care how a file came to be different.
    */
   it("sees a change regardless of how it was made", async () => {
     git("init");
