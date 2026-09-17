@@ -1,49 +1,59 @@
-import { describe, it, expect } from "vitest";
-import { guardrailText, rulesForRepo } from "../src/steer";
-import { loadRules } from "../src/rules/load";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { bundledGuideDir, loadGuide } from "../src/guide";
+import { guideIndex } from "../src/steer";
 
-const corpus = loadRules();
+describe("the shipped guide", () => {
+  const chapters = loadGuide();
 
-describe("guardrailText", () => {
-  const text = guardrailText(corpus);
-
-  it("names every rule it is given, by id", () => {
-    expect(corpus.filter((r) => !text.includes(`[${r.id}]`)).map((r) => r.id)).toEqual([]);
+  it("loads every chapter with the header the index is built from", () => {
+    expect(chapters.length).toBeGreaterThanOrEqual(12);
   });
 
-  /** The agent should know which rules stop it and which are left to review. */
-  it("separates what blocks at the end of a turn from what is reviewed later", () => {
-    const [checked, reviewed] = text.split("reviewed before the work is merged");
+  const index = guideIndex(chapters, bundledGuideDir());
 
-    expect(checked).toContain("[fe.storage.no-token-in-local-storage]");
-    expect(reviewed).toContain("[be.authz.ownership-check]");
-    expect(checked).not.toContain("[be.authz.ownership-check]");
+  it("indexes every chapter, by file, with when to read it", () => {
+    const missing = chapters.filter((c) => !index.includes(`${c.file} (${c.title}). Read when ${c.readWhen}`));
+
+    expect(missing.map((c) => c.file)).toEqual([]);
   });
 
-  it("tells the agent an exception is the person's to make", () => {
-    expect(text).toContain("counts only once a person commits it");
+  it("tells the agent where the chapters are", () => {
+    expect(index).toContain(bundledGuideDir());
   });
 
   /**
-   * Paid on every session, and read carefully only while short. When the corpus
-   * outgrows this, the answer is choosing what to show, not raising the number.
+   * Read at the start of every session, and read carefully only while short.
+   * It grows by chapter, never by rule: about 200 characters a chapter. Past
+   * this, the answer is grouping chapters, not raising the number.
    */
   it("stays short enough to be read", () => {
-    expect(text.length).toBeLessThan(4_000);
+    expect(index.length).toBeLessThan(4_000);
   });
 });
 
-describe("rulesForRepo", () => {
-  it("leaves out rules that match no file in the repo", () => {
-    const ids = rulesForRepo(corpus, ["api/src/orders.ts"]).map((r) => r.id);
-
-    expect(ids).toContain("be.authz.ownership-check");
-    expect(ids).not.toContain("fe.a11y.no-click-handler-on-div");
+describe("loadGuide", () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "agentic-qa-guide-"));
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
   });
 
-  it("gives a repo with no code every rule, since all its code is still to be written", () => {
-    expect(rulesForRepo(corpus, [])).toHaveLength(corpus.length);
-    // What `init` leaves in a new repo is configuration, not code.
-    expect(rulesForRepo(corpus, ["qa.config.yaml", ".claude/settings.json"])).toHaveLength(corpus.length);
+  /** A chapter missing from the index is guidance nobody is steered to. */
+  it("refuses a chapter without its header, rather than leaving it out", () => {
+    writeFileSync(join(dir, "01-orphan.md"), "# Orphan\n\nNo summary or read-when line.\n");
+
+    expect(() => loadGuide(dir)).toThrow("guide/01-orphan.md");
+  });
+
+  it("reads only numbered chapters, not a README beside them", () => {
+    writeFileSync(join(dir, "README.md"), "# About\n");
+    writeFileSync(join(dir, "01-a.md"), "# A\n\n*Summary.*\n\n**Read when:** always.\n");
+
+    expect(loadGuide(dir).map((c) => c.file)).toEqual(["01-a.md"]);
   });
 });

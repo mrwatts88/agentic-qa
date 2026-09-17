@@ -15,7 +15,7 @@ import { runInit } from "../src/init";
  * repos wired to this checkout's `dist/`, and assert on the session transcript:
  * whether the turn was held, what the agent was told, what the person saw.
  *
- * Run with `npm run smoke`: five sessions in parallel, about a minute, using
+ * Run with `npm run smoke`: six sessions in parallel, about a minute, using
  * whatever login `claude` already has. Not part of `npm test`, and not in
  * CI. Transcripts land in `.qa/tmp/smoke/`.
  *
@@ -187,11 +187,17 @@ beforeAll(() => {
     "steering",
     { files: {} },
     [
-      "Were you given any rules for this repository before this message?",
-      "If so, reply with only the rule id that is about checking a caller may access a record.",
-      "Otherwise reply NONE.",
+      "I am about to ask you to add a login endpoint that sets a session cookie.",
+      "Do not write any code yet. Prepare for that work the way this repository asks you to,",
+      "then reply with the file names of anything you read.",
     ].join("\n"),
-    NO_TOOLS,
+    ["--tools", "Read", "--allowedTools", "Read", "--add-dir", join(ROOT, "guide")],
+  );
+  sessions.unsteered = runSession(
+    "unsteered",
+    { files: {} },
+    "What is 2 + 2? Reply with just the number.",
+    ["--tools", "Read", "--allowedTools", "Read", "--add-dir", join(ROOT, "guide")],
   );
   sessions.broken = runSession(
     "broken",
@@ -214,16 +220,31 @@ beforeAll(() => {
 
 describe("SessionStart", () => {
   /**
-   * The guidance reaches the agent only as context, which the transcript does
-   * not show. So the agent is asked for a rule id it cannot know any other way:
-   * the repo it runs in is empty.
+   * Delivery alone proves little: the index is only worth having if the agent
+   * acts on it. Asked to prepare for auth work, in an empty repo with nothing
+   * else to go on, it should open the auth chapter.
    */
-  it("puts the rules in front of the agent before it writes anything", async () => {
+  it("steers the agent to the guide chapter its work needs", async () => {
     const events = await sessions.steering;
-    const result = String(events.find((e) => e.type === "result")?.result ?? "");
+    const reads = events
+      .filter((e) => e.type === "assistant")
+      .flatMap((e) => e.message.content)
+      .filter((c: Event) => c.type === "tool_use" && c.name === "Read")
+      .map((c: Event) => String(c.input.file_path));
 
-    expect(hookOutputs(events, "SessionStart").join("\n")).toContain("be.authz.ownership-check");
-    expect(result).toContain("be.authz.ownership-check");
+    expect(hookOutputs(events, "SessionStart").join("\n")).toContain("05-auth-and-security.md");
+    expect(reads.some((path) => path.endsWith("guide/05-auth-and-security.md"))).toBe(true);
+  });
+
+  /** Paying for chapters on every session would make the index a tax. */
+  it("does not send the agent to the guide for work that needs none of it", async () => {
+    const events = await sessions.unsteered;
+    const reads = events
+      .filter((e) => e.type === "assistant")
+      .flatMap((e) => e.message.content)
+      .filter((c: Event) => c.type === "tool_use" && c.name === "Read");
+
+    expect(reads).toEqual([]);
   });
 });
 

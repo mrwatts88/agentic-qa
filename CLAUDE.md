@@ -95,8 +95,12 @@ grounding needs.
   stay serial.
 - `src/hook.ts` — what the Claude Code hooks share: payload reading, changed
   files, exception wording. The per-edit hook that lived here is removed.
-- `src/steer.ts` — the SessionStart hook: the rules in force, told to the agent
-  before it writes anything. Guidance, not a check.
+- `guide/` — the corpus: how software should be built, one chapter per area.
+  Each chapter starts with a title, an italic summary and a `**Read when:**`
+  line; the loader refuses one without them.
+- `src/guide.ts` — loads the guide's chapters.
+- `src/steer.ts` — the SessionStart hook: an index of the guide, told to the
+  agent before it writes anything. Guidance, not a check.
 - `src/stop.ts` — the Stop hook. Checks everything the turn changed and blocks
   the agent from finishing while findings stand, at most once per turn.
 - `src/init.ts` — installs the call sites into a repo. Never overwrites.
@@ -207,12 +211,13 @@ grounding needs.
   add a scenario to `smoke/hooks.smoke.ts` for any new behaviour. Their inputs
   live in `fixtures/smoke/`, because they break rules on purpose.
 - **Steering is generated, never written.** The SessionStart text is built from
-  the loaded rules at the start of every session, so a corpus change reaches
-  the agent with no step to remember, and it cannot name a check that does not
-  run. **It is being reshaped (ROADMAP Next 2):** today it lists every rule,
-  which works for the 25-rule test set and not for the real corpus. The real
-  corpus is the guide — hundreds of concepts — so steering becomes an index of
-  its chapters that the agent reads on demand. Never grow the rule list.
+  the guide's chapter headers at the start of every session, so a guide change
+  reaches the agent with no step to remember, and it cannot name a chapter that does not
+  exist. It is an index of the guide's chapters, read on demand, never a list of
+  rules: the first version listed every rule, 3,061 characters for a 25-rule
+  test set, which does not survive a corpus of hundreds. A test holds the index
+  under 4,000 characters; it grows by chapter, and outgrowing it means grouping
+  chapters, not raising the number.
 - **Stop runs the mechanical corpus only.** Judgment was tried there and does
   not fit a turn: on one feature's worth of changes it made about 30 model
   calls, took minutes, overran the hook timeout and was cancelled having checked

@@ -7,6 +7,10 @@ Agent code fails differently from human code. Human mistakes look like mistakes.
 Agent mistakes look correct: it compiles, the shape is right, the tests pass, and
 it quietly does the wrong thing. Reading all of it carefully does not scale.
 
+What "right" means is written down in a guide to building software, which ships
+in `guide/`. The agent is pointed at it before it writes, the parts a tool can
+check are checked as it works, and your tests are checked against what they say.
+
 ## Quick start
 
 In the repo you want checked:
@@ -53,20 +57,25 @@ so it works as a gate.
 
 ## Before the agent writes anything
 
-With `--claude-hook`, every Claude Code session starts with a short list of the
-rules: which are checked when a turn ends, which are left to review, and how an
-exception works. It is built from the rules at the start of each session, so it
-always matches what is enforced, and lists only rules that apply to files in
-your repo. A repo with no code yet gets them all. See it with
-`npx agentic-qa session-start`.
+With `--claude-hook`, every Claude Code session starts with an index of the
+guide: one line per chapter saying what kind of work it applies to, and where to
+read it. The agent reads a chapter when its work enters that area — asked to
+prepare for a login endpoint, it reads the auth, web, backend and testing
+chapters — so it pays only for what its work touches, however large the guide
+grows. The index is built from the chapters at the start of each session, so an
+edited guide needs no other step. See it with `npx agentic-qa session-start`.
+
+The guide is twelve chapters, about 34,000 words: web fundamentals, backend
+architecture, data, frontend, auth and security, testing, repo hygiene,
+delivery, observability, performance, infrastructure, and working with agents.
 
 ## Two things it checks
 
 ### 1. Rules
 
-Rules live in `rules/*.yaml` and ship inside the package, so a repo that
-installs it gets the corpus and cannot drift from it. Updating the dependency
-updates the rules.
+Rules are the parts of the guide a tool can check. They live in `rules/*.yaml`
+and ship inside the package, so updating the dependency updates them. Today they
+are a small set that proves the machinery; most of the guide is not yet a rule.
 
 Every rule must say how it is enforced:
 
@@ -145,9 +154,10 @@ localStorage.setItem("authToken", token); // qa-ignore: fe.storage.no-token-in-l
 That hatch matters: without it, the first false positive gets the whole checker
 disabled instead of the one rule.
 
-An exception takes effect once it is **committed**. The Stop hook ignores a `qa-ignore` added or changed since the last commit, so the
-finding still stands, and Stop shows you every one it refused. That stops a
-blocked agent from writing its own way out. Commit and CI honour every exception
+An exception takes effect once it is **committed**. The Stop hook ignores a
+`qa-ignore` added or changed since the last commit, so the finding still stands,
+and if the agent has not fixed it by the time the turn ends, Stop shows you the
+exceptions it refused. That stops a blocked agent from writing its own way out. Commit and CI honour every exception
 they see. Because an agent with an unrestricted shell can commit too, set Claude
 Code to ask before `git commit`. `init` does not add this for you; put it in your
 own settings, for one repo or for all of them:
@@ -206,9 +216,12 @@ committed, and re-checked only when the code, the description, or the checker
 itself changes.
 
 Model calls run through headless `claude -p`, so they use your existing Claude
-Code login with no API key. Roughly **two cents** per judged file. Checking a
-50-test suite from cold costs about a dollar; day to day, almost every run is
-free because almost nothing changed.
+Code login with no API key. The scanners, the end-of-turn check and the commit
+hook never call a model. Judgment rules cost one to three cents per rule per
+file and take ten to fifty seconds each; a test contract is about a cent. Day to
+day, almost every run is free because almost nothing changed. These are
+per-call judgments being replaced by one review of a whole change; see the
+[roadmap](ROADMAP.md).
 
 ## What it downloads
 
@@ -322,8 +335,8 @@ npm run eval:rules-llm    # rules judged by a model
 npm run eval:contracts    # the contract judge
 ```
 
-Current: 5/5 contracts, 19/19 rule violations with no false positives across
-eight clean controls, 19/19 judgment verdicts with nothing in either direction.
+Current: 20/20 rule violations with no false positives across eight clean
+controls. The paid evals last scored 5/5 contracts and 19/19 judgment verdicts.
 
 Run it after any change to a prompt, a model, or a schema.
 

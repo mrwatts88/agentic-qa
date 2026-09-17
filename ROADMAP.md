@@ -926,6 +926,13 @@ reasoning. What landed, beyond the decision as written:
 
 ### 2. The guide ships, and steering becomes an index of it
 
+**Built.** `guide/` holds the twelve chapters, each with a `**Read when:**` line;
+`agentic-qa session-start` emits the index (2,723 characters). A smoke session
+asked to prepare for a login endpoint read the auth, web, backend and testing
+chapters. Differences from the plan: every chapter is listed, unmarked, since
+twelve lines is short and marking by file match proved unreliable for
+config-only repos.
+
 **Decided 2026-09-17.** The corpus is not a list of rules. The owner's
 `~/code/full-stack-swe` is 12 chapters, about 34,500 words and 250 sections of
 how to build software; classified, it is hundreds of concepts. The 25 rules here

@@ -106,7 +106,7 @@ async function main(): Promise<number> {
   if (command === "hook") return 0;
 
   // Guidance, not a check: the rules in force, before the agent writes anything.
-  if (command === "session-start") return runSessionStart(hookCwd);
+  if (command === "session-start") return runSessionStart();
 
   // Also always exits zero: it blocks through the decision field, not the exit
   // code, so a crash here can never trap a turn.
