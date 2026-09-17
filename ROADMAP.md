@@ -837,3 +837,48 @@ designed.
 - **How `qa-ignore` gets audited.** The escape hatch is necessary, but a repo
   where it spreads unchecked has quietly turned the rules off. Counting them and
   watching the trend is probably enough.
+
+### Raised, not yet designed
+
+Recorded so they are thought about deliberately rather than discovered late.
+Each notes where it is likely to be decided — `init` flags, `qa.config.yaml`, or
+both — but none of them is settled.
+
+- **Other stacks.** Everything assumes TypeScript, Hono, React, Postgres and
+  Terraform: the shipped engine configs, the file extensions adapters handle,
+  the patterns. Supporting another language or framework cleanly probably means
+  a *stack profile* as the unit of configuration — which adapters run, which
+  engine presets they load, which packs apply — declared in `qa.config.yaml`
+  and proposed by `init` from what it detects (`package.json` dependencies,
+  `go.mod`, `pyproject.toml`, `*.tf`). The seam already fits: adapters say which
+  files they handle, and a corpus rule names its tool. What must not happen is
+  forking the logic per stack; a profile selects, it does not branch.
+- **Framework-specific gauntlets.** The corpus is framework-agnostic on purpose,
+  and so is the shipped eslint config, so a Next.js repo gets nothing from
+  `@next/eslint-plugin-next`, and a React repo nothing from
+  `eslint-plugin-react-hooks` or `jsx-a11y` (the last would cover
+  `fe.a11y.no-click-handler-on-div`). The likely answer is the same profile
+  mechanism: frameworks contribute engine plugins to the gauntlet, detected from
+  dependencies, and a framework pack can claim rules from them. Hono has no
+  eslint plugin, which is part of why Sonar's rules missed it.
+- **Non-cooperative mode.** One developer wants the checks; the team does not
+  want anything added to the repo. The least invasive install touches no
+  tracked file: no `prepare` script, no `hooks/` directory, no committed
+  `.claude/settings.json`. Candidates for each piece: the tool itself installed
+  globally or run through `npx` rather than added to `package.json`; the commit
+  hook in `.git/hooks` or a local-only `core.hooksPath`, which git does not
+  share; Claude Code hooks in `.claude/settings.local.json`, which is
+  per-developer by design; `qa.config.yaml` and the `.qa/` ledgers either
+  excluded through `.git/info/exclude` or kept outside the repo altogether. The
+  ledgers are the awkward part — "committed and shared" is a design invariant —
+  so this mode likely means local-only verdicts, and that trade should be
+  stated rather than hidden. Probably `init --personal`.
+- **Whether the packs are complete.** Five exist: backend, data, frontend,
+  security, testing. The prose corpus has twelve chapters, and five have
+  produced no rules at all (web fundamentals, repo hygiene, devops and delivery,
+  observability and ops, performance and reliability). Infrastructure has no
+  pack: its one Terraform rule, `sec.no-world-open-security-group`, is filed
+  under security. Creating empty packs now would fix a taxonomy before the
+  classification pass (item 7) has shown what the concepts actually are; the
+  pack list is more likely to fall out of that pass than to precede it. An
+  `infra` pack is the one that is clearly missing already.
