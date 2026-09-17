@@ -89,7 +89,7 @@ What each place runs, once built:
   the agent knows which principle it broke but not what the judge saw. The block
   must include the judge's reason and the rule's rationale. Contract findings
   already carry their reason.
-- **Session-start steering: reversed, now Next item 3.** It was deferred while
+- **Session-start steering: reversed, now Next item 2.** It was deferred while
   judgment blocked at Stop, on the view that the agent learns a rule the moment
   it breaks one. Judgment left Stop after trial 2, so the only automatic moment
   left to tell the main model about the judgment rules is before it writes.
@@ -924,7 +924,64 @@ reasoning. What landed, beyond the decision as written:
   blocking when on. Stop cannot.
 - **`agentic-qa rules` reports the corpus only**, like the call sites.
 
-### 2. Use it for real on `orders-admin`
+### 2. Session-start steering: tell the agent the guardrails before it writes
+
+Prevention, where the review below is detection. A `SessionStart` hook, installed
+by `init --claude-hook`, puts a short form of the corpus in front of the main
+model — Opus or Fable — before it writes anything: what will be checked, and how
+to treat a finding. The text ships in the package and is generated from the
+corpus, so it cannot drift from what is enforced, and no consuming repo's
+CLAUDE.md changes. A strong model told the rules up front avoids most of what a
+reviewer would otherwise catch, at no per-call cost.
+
+- Short enough to be read, not skimmed: rule statements grouped by area, not
+  rationales. Measure its size; it is paid on every session.
+- Verified by a smoke scenario: a session asked to build something a rule
+  forbids, with the hook on and off, and the difference recorded.
+- Rerun the `orders-admin` trial prompt with it on, and compare what the review
+  finds against trials 1 and 2.
+
+### 3. One independent review per piece of work: `agentic-qa review`
+
+Replaces the per-rule, per-file judge calls, which trial 2 measured at about 30
+calls and minutes per feature. One fresh `claude -p` call on **Opus 5 at high
+effort** is handed the whole change — changed files, the judgment rules, the
+tests and their descriptions — and asked one question: does this change break
+any of these rules, and do these tests check what they claim? It returns
+findings, each with a file, a line, what it saw and why it matters.
+
+- **Independent judgment, findings to the author.** The review has no view of
+  the session that wrote the code, so it has no stake in its choices. The agent
+  runs the command when the work is ready for a PR, so the findings land where
+  the context to fix them is. CI runs the same review as the backstop, and an
+  exception still counts only once a person commits it.
+- **What "the change" is:** the branch against its merge base, plus the working
+  tree. A path argument narrows it.
+- **Seeing across files is the point.** An ownership check one layer down, or a
+  handler test that correctly mocks its service, is judged with both files in
+  view, rather than argued about in a comment for a judge that sees one.
+- **Cost is not the constraint.** The owner runs it on a plan that covers it,
+  and it replaces what a person would do by hand. Model and effort still live in
+  `qa.config.yaml` so a repo can choose.
+- **Caching per change**, not per rule and file: an unchanged change is not
+  re-reviewed. The ledger records the review, its version and what it covered.
+- **Scoring.** The eval corpora ask one rule of one file. Rework
+  `eval:rules-llm` and `eval:contracts` to score a review against known answers,
+  keeping the not-applicable controls, before trusting it.
+- **Size.** Past a limit, split by area into a few reviews, never back to one
+  per rule.
+- **CI** runs `review` in place of `rules --llm` and `contracts`.
+- A skill or documented prompt for "run the review, fix what is real, say what
+  you disagree with", so the agent does not argue findings away silently.
+
+### 4. Use it for real on `orders-admin`
+
+After items 2 and 3, and as their test: the trials below measured a design that
+has since been replaced, so the next trial reruns the same prompt with steering
+on and ends with the agent running the review. Compare against trials 1 and 2:
+what the review finds, whether steering prevented it, what the agent does with
+findings, and how long and how much the review takes.
+
 
 **Trial 1, 2026-09-17** (prompt in `fixtures/probes/trial-orders-api/`): a
 headless Sonnet session built an orders API — repository, service, handlers, 18
@@ -992,56 +1049,6 @@ actual feature there with the hooks live, and record what nothing else can show:
 
 This is the calibration the fixtures cannot provide, and its findings will
 re-rank the items below it.
-
-### 3. Session-start steering: tell the agent the guardrails before it writes
-
-Prevention, where the review below is detection. A `SessionStart` hook, installed
-by `init --claude-hook`, puts a short form of the corpus in front of the main
-model — Opus or Fable — before it writes anything: what will be checked, and how
-to treat a finding. The text ships in the package and is generated from the
-corpus, so it cannot drift from what is enforced, and no consuming repo's
-CLAUDE.md changes. A strong model told the rules up front avoids most of what a
-reviewer would otherwise catch, at no per-call cost.
-
-- Short enough to be read, not skimmed: rule statements grouped by area, not
-  rationales. Measure its size; it is paid on every session.
-- Verified by a smoke scenario: a session asked to build something a rule
-  forbids, with the hook on and off, and the difference recorded.
-- Rerun the `orders-admin` trial prompt with it on, and compare what the review
-  finds against trials 1 and 2.
-
-### 4. One independent review per piece of work: `agentic-qa review`
-
-Replaces the per-rule, per-file judge calls, which trial 2 measured at about 30
-calls and minutes per feature. One fresh `claude -p` call on **Opus 5 at high
-effort** is handed the whole change — changed files, the judgment rules, the
-tests and their descriptions — and asked one question: does this change break
-any of these rules, and do these tests check what they claim? It returns
-findings, each with a file, a line, what it saw and why it matters.
-
-- **Independent judgment, findings to the author.** The review has no view of
-  the session that wrote the code, so it has no stake in its choices. The agent
-  runs the command when the work is ready for a PR, so the findings land where
-  the context to fix them is. CI runs the same review as the backstop, and an
-  exception still counts only once a person commits it.
-- **What "the change" is:** the branch against its merge base, plus the working
-  tree. A path argument narrows it.
-- **Seeing across files is the point.** An ownership check one layer down, or a
-  handler test that correctly mocks its service, is judged with both files in
-  view, rather than argued about in a comment for a judge that sees one.
-- **Cost is not the constraint.** The owner runs it on a plan that covers it,
-  and it replaces what a person would do by hand. Model and effort still live in
-  `qa.config.yaml` so a repo can choose.
-- **Caching per change**, not per rule and file: an unchanged change is not
-  re-reviewed. The ledger records the review, its version and what it covered.
-- **Scoring.** The eval corpora ask one rule of one file. Rework
-  `eval:rules-llm` and `eval:contracts` to score a review against known answers,
-  keeping the not-applicable controls, before trusting it.
-- **Size.** Past a limit, split by area into a few reviews, never back to one
-  per rule.
-- **CI** runs `review` in place of `rules --llm` and `contracts`.
-- A skill or documented prompt for "run the review, fix what is real, say what
-  you disagree with", so the agent does not argue findings away silently.
 
 ### 5. CI documentation a consuming repo can follow
 
