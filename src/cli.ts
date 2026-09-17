@@ -10,7 +10,7 @@ import { loadLedger, saveLedger } from "./contracts/ledger.js";
 import { loadRules } from "./rules/load.js";
 import { readHookPayload } from "./hook.js";
 import { runStop } from "./stop.js";
-import { runInit, installHooks, prepareLine } from "./init.js";
+import { runInit, installHooks, prepareLine, installedCallSites } from "./init.js";
 import { selectFiles } from "./rules/select.js";
 import { runMechanical } from "./rules/mechanical.js";
 import { printFindings, printUnenforced, runCi, runCommit, stagedFiles } from "./gate.js";
@@ -192,12 +192,14 @@ async function main(): Promise<number> {
       );
     }
 
-    // Nothing is installed that was not asked for, so say what was not.
-    if (!gitHook || !claudeHook) {
-      const offer = [
-        gitHook ? null : "  --git-hook      gate commits on the free mechanical tier",
-        claudeHook ? null : "  --claude-hook   stop Claude finishing a turn that breaks a rule",
-      ].filter(Boolean);
+    // Nothing is installed that was not asked for, so say what is missing: not
+    // what this run left out, which may well be installed already.
+    const installed = installedCallSites(cwd);
+    const offer = [
+      installed.gitHook ? null : "  --git-hook      gate commits on the free mechanical tier",
+      installed.claudeHook ? null : "  --claude-hook   stop Claude finishing a turn that breaks a rule",
+    ].filter(Boolean);
+    if (offer.length) {
       process.stdout.write(
         pc.dim(`\nNot installed. Re-run init with a flag to opt in:\n${offer.join("\n")}\n`),
       );

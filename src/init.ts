@@ -227,6 +227,34 @@ function installGitHook(
   }
 }
 
+/**
+ * Which call sites a repo already has, whoever installed them and whenever. A
+ * run that did not pass a flag says nothing about whether that call site exists,
+ * so offering it on that basis tells someone with a working hook to install it.
+ */
+export function installedCallSites(cwd: string): { gitHook: boolean; claudeHook: boolean } {
+  const read = (relative: string) => {
+    try {
+      return readFileSync(resolve(cwd, relative), "utf8");
+    } catch {
+      return "";
+    }
+  };
+
+  let claudeHook = false;
+  try {
+    const settings = JSON.parse(read(join(".claude", "settings.json")) || "{}");
+    const stops: { hooks?: { command?: unknown }[] }[] = settings?.hooks?.Stop ?? [];
+    claudeHook = stops.some((entry) =>
+      (entry.hooks ?? []).some((h) => typeof h.command === "string" && /\bstop\b/.test(h.command)),
+    );
+  } catch {
+    // An unreadable settings file has no hook in it that Claude Code will run.
+  }
+
+  return { gitHook: /\bcommit\b/.test(read(join("hooks", "pre-commit"))), claudeHook };
+}
+
 export function runInit(cwd: string, runner: string, options: InitOptions): InitResult {
   const result: InitResult = { written: [], replaced: [], updated: [], skipped: [] };
 

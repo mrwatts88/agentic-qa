@@ -920,8 +920,8 @@ gauntlet is on demand" for the reasoning. To build:
 
 - **Remove the per-edit hook.** Done: `init --claude-hook` writes Stop only, the
   `edit` row is gone from `src/sites.ts`, and `agentic-qa hook` exits zero
-  silently so older settings do not error. A config still naming
-  `callSites.edit` now fails to load, as any unknown call site does.
+  silently so older settings do not error, and `callSites.edit` in an older
+  config is ignored rather than failing to load.
 - **Stop, commit and CI report corpus findings only.** Drop unclaimed scanner
   findings there, and run only the engines that claim a corpus rule routed to
   the files being checked.

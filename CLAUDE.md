@@ -339,8 +339,11 @@ ROADMAP Next item 1 lists them. Until then they describe the code as it is.
 - **Report open problems first.** When work is done, the first thing the owner
   reads is what is still wrong, unfixed, unverified or assumed, with anything
   that needs their decision. How it works comes after, briefly. A problem found
-  along the way is either fixed or named there, never left in the middle of a
-  summary.
+  along the way is fixed, not reported: misleading output, a config that stops
+  loading, an edge case in code just written. Name one only when fixing it needs
+  the owner's decision or is a separate piece of work, and then say what the
+  decision is, not just the scenario. Keep reports short; no bullets that turn
+  out to mean "nothing is wrong".
 - **Restate a change of direction before acting on it.** When the owner reshapes
   what the tool is for, say back what they asked for, flag anything risky in it,
   and get agreement before editing.

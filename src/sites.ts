@@ -23,6 +23,7 @@ import { defaultAdapters, KNOWN_TOOLS } from "./rules/adapters/index.js";
  */
 export const CALL_SITES = ["stop", "commit", "ci"] as const;
 export type CallSite = (typeof CALL_SITES)[number];
+const RETIRED_SITE = "edit";
 
 export interface SitePolicy {
   /** `fast` leaves out every engine marked slow; `all` runs every one. */
@@ -111,6 +112,10 @@ export function parseSiteOverrides(raw: unknown): SiteOverrides {
 
   const overrides: SiteOverrides = {};
   for (const [name, value] of Object.entries(raw)) {
+    // The retired per-edit hook. Its settings configure nothing now, but a repo
+    // that set them did nothing wrong, and failing to load would stop every
+    // call site over a line that used to be valid.
+    if (name === RETIRED_SITE) continue;
     if (!(CALL_SITES as readonly string[]).includes(name)) {
       fail(`unknown call site "${name}"; expected one of ${CALL_SITES.join(", ")}`);
     }

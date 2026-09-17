@@ -11,7 +11,7 @@ import {
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runInit, installHooks, type InitOptions } from "../src/init";
+import { runInit, installHooks, installedCallSites, type InitOptions } from "../src/init";
 
 let dir: string;
 let ci: string | undefined;
@@ -326,6 +326,26 @@ describe("init", () => {
     expect(readFileSync(join(dir, "hooks/pre-commit"), "utf8")).toContain(
       "node dist/cli.js commit",
     );
+  });
+});
+
+/** What `init` offers to install depends on this, not on which flags a run had. */
+describe("installedCallSites", () => {
+  it("finds call sites installed by an earlier run", () => {
+    runInit(dir, "npx agentic-qa", BOTH);
+
+    expect(installedCallSites(dir)).toEqual({ gitHook: true, claudeHook: true });
+  });
+
+  it("finds them when this run asked for neither", () => {
+    runInit(dir, "npx agentic-qa", BOTH);
+    runInit(dir, "npx agentic-qa", { gitHook: false, claudeHook: false, force: false });
+
+    expect(installedCallSites(dir)).toEqual({ gitHook: true, claudeHook: true });
+  });
+
+  it("reports nothing in a repo that has neither", () => {
+    expect(installedCallSites(dir)).toEqual({ gitHook: false, claudeHook: false });
   });
 });
 

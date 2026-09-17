@@ -70,6 +70,12 @@ describe("repo overrides", () => {
     expect(tools(adaptersFor(policyFor("ci", overrides), REGISTRY))).not.toContain("opengrep");
   });
 
+  it("ignores settings for the retired per-edit hook rather than failing to load", () => {
+    expect(parseSiteOverrides({ edit: { llm: true }, commit: { scanners: "all" } })).toEqual({
+      commit: { scanners: "all" },
+    });
+  });
+
   /** A setting silently ignored is a check someone believes they changed. */
   it.each([
     [{ comit: {} }, 'unknown call site "comit"'],
