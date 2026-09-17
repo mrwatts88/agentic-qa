@@ -22,6 +22,7 @@ npm test                      # vitest (fixtures/ excluded)
 node dist/cli.js contracts    # judge tests against their descriptions
 node dist/cli.js mutate       # break the code and check the tests notice
 node dist/cli.js eval         # score the judge against known-correct verdicts
+node dist/cli.js setup        # download the pinned scanners and rules now
 ```
 
 Two fixture corpora, used for different things:
@@ -56,6 +57,8 @@ grounding needs.
   and refuses to run when a claimed tool rule is switched off.
 - `src/rules/adapters/*.ts` — one per engine. Runs the tool and returns what it
   said in the tool's own rule ids; knows nothing about the corpus.
+- `src/tools/provision.ts` — downloads the scanners npm cannot install and the
+  community rules into `~/.cache/agentic-qa/`, pinned and checksummed.
 - `config/` — the engine configs the tool ships and runs with (eslint,
   dependency-cruiser, and gitleaks' upstream ruleset vendored at a pinned
   version: re-vendor it, never hand-edit it). Trimming a preset or narrowing a scope here can break a
@@ -146,10 +149,17 @@ grounding needs.
   a session becomes unable to finish, which is far worse than a noisy report.
   The second pass repeats the findings and lets go, so the worst case is one
   wasted round trip.
-- **Stop blocks through `decision`, never through the exit code, and always
-  exits zero.** A non-zero exit would hold the turn without saying why, and a
-  crash would hold it forever. Failing to run is reported as context, never as
-  a block.
+- **Stop blocks through a top-level `decision`, never through the exit code,
+  and always exits zero.** A non-zero exit would hold the turn without saying
+  why, and a crash would hold it forever. `decision` nested in
+  `hookSpecificOutput` is silently ignored — the hook shipped that way and never
+  blocked. `hookSpecificOutput.additionalContext` keeps the agent going too, so
+  it is never used for anything that must let the turn end: the second pass,
+  notes and a failure to run all go to the person as `systemMessage`.
+- **A hook contract is verified by running a real session.** Reading the docs
+  produced the nested-`decision` bug, and tests that assert the emitted JSON
+  only prove it was emitted. Check a change to hook output with headless
+  `claude -p` against a scratch repo whose hook uses it.
 - **Stop runs the ladder at runtime: mechanical first, and no judgment pass at
   all when a pattern already found an error.** Paying a model to judge code
   that fails a linter-tier rule is the same waste the enforcement ladder exists
@@ -229,6 +239,17 @@ grounding needs.
   every file its globs match, and most are irrelevant to it. Forcing a binary
   answer manufactures false positives. Any new llm rule needs fixture cases
   asserting it stays quiet about files it has nothing to say about.
+- **Slow engines stay out of the per-edit hook.** An adapter marked `slow`
+  (opengrep) runs at Stop, on commit and in CI; its corpus rules still block at
+  the turn boundary. The per-edit hook fires on every edit, and seconds there
+  get the hook uninstalled.
+- **Never commit the semgrep community rules.** Their license forbids
+  redistribution and this repository is public. They are downloaded into the
+  per-machine cache, pinned by commit, like the scanner binaries, which are
+  pinned by version and SHA-256 in `src/tools/provision.ts`.
+- **Unit tests never download.** `vitest.config.ts` sets
+  `AGENTIC_QA_NO_DOWNLOAD`; a test needing a real scanner uses the cache or an
+  installed copy and skips otherwise, but never in CI, which runs `setup` first.
 - **Every rule keeps a working `qa-ignore` escape hatch, in both tiers.**
   Without a sanctioned way to switch off one rule with a recorded reason, the
   first false positive gets the whole check disabled instead. The two tiers

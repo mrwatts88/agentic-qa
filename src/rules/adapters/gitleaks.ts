@@ -3,13 +3,14 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { Adapter, ToolFinding, ToolRun } from "./types.js";
 import { pool } from "../../pool.js";
+import { ensureBinary, GITLEAKS } from "../../tools/provision.js";
 
 /**
- * The upstream default ruleset, vendored at the version it was taken from so
- * the rules are pinned and reviewable rather than whatever the installed binary
- * happens to embed. Re-vendor deliberately; never edit it by hand.
+ * The config is the upstream default ruleset, vendored at the version
+ * `GITLEAKS.version` pins, so the rules are pinned and reviewable rather than
+ * whatever a binary happens to embed. Re-vendor both together; never edit the
+ * config by hand.
  */
-export const GITLEAKS_CONFIG_VERSION = "v8.30.1";
 
 export function bundledGitleaksConfig(): string {
   return fileURLToPath(new URL("../../../config/gitleaks.toml", import.meta.url));
@@ -81,7 +82,20 @@ function readConfig(path: string): { ids: Set<string>; allowPaths: RegExp[] } {
   return { ids, allowPaths };
 }
 
-export function gitleaks(configFile = bundledGitleaksConfig(), binary = "gitleaks"): Adapter {
+/**
+ * The pinned binary, downloaded on first use. Offline and never downloaded, a
+ * gitleaks already on the PATH is the fallback: a different version is still
+ * far better than no secret scan.
+ */
+async function provisioned(): Promise<string> {
+  try {
+    return await ensureBinary(GITLEAKS);
+  } catch {
+    return "gitleaks";
+  }
+}
+
+export function gitleaks(configFile = bundledGitleaksConfig(), binary?: string): Adapter {
   let config: ReturnType<typeof readConfig> | undefined;
   const load = () => (config ??= readConfig(configFile));
 
@@ -92,7 +106,8 @@ export function gitleaks(configFile = bundledGitleaksConfig(), binary = "gitleak
     handles: () => true,
 
     async run(cwd, files): Promise<ToolRun> {
-      const results = await pool(files, CONCURRENCY, (file) => scan(binary, cwd, file, configFile));
+      const exe = binary ?? (await provisioned());
+      const results = await pool(files, CONCURRENCY, (file) => scan(exe, cwd, file, configFile));
 
       const findings: ToolFinding[] = [];
       for (const result of results) {

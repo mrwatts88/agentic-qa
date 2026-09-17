@@ -4,6 +4,7 @@ import { loadConfig } from "./config.js";
 import { loadRules } from "./rules/load.js";
 import { selectFiles } from "./rules/select.js";
 import { runMechanical } from "./rules/mechanical.js";
+import { defaultAdapters } from "./rules/adapters/index.js";
 
 /**
  * The agent-facing call site: a PostToolUse hook that runs after every edit.
@@ -127,7 +128,11 @@ export async function runHook(cwd: string, filePath?: string): Promise<number> {
 
     const files = await selectFiles(cwd, config, rules, scope);
 
-    const { findings, unenforced } = await runMechanical(cwd, files, rules);
+    // The fast engines only: this fires on every edit. The slow ones run at the
+    // turn boundary, which is where their corpus rules block anyway.
+    const { findings, unenforced } = await runMechanical(cwd, files, rules, {
+      adapters: defaultAdapters({ fast: true }),
+    });
     const corpus = findings.filter((f) => f.origin === "corpus");
     const gauntlet = findings.filter((f) => f.origin === "gauntlet");
     if (!findings.length && !unenforced.length) return 0;

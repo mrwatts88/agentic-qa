@@ -183,9 +183,31 @@ Two things the contract settles, both verified against the docs rather than
 recalled. `Stop` supports no matchers, and its default timeout is 600s, so
 **latency was never the constraint here — cost is.** The 30s figure that made
 this look tight is the timeout `init` writes for the PostToolUse hook, not a
-platform limit. And the payload carries `cwd` plus `stop_hook_active`; blocking
-is either exit 2 or `hookSpecificOutput.decision: "block"` with a `reason`,
-which is what the agent is shown.
+platform limit. And the payload carries `cwd` plus `stop_hook_active`.
+
+**Corrected: how Stop blocks.** This section used to say blocking was
+`hookSpecificOutput.decision: "block"` with a `reason`, "verified against the
+docs". It was wrong, and the hook shipped that way: Claude Code ignores a nested
+`decision`, so `agentic-qa stop` looked wired in every repo and never blocked
+anything. Its tests asserted the JSON it emitted, which proved only that it
+emitted it. Found while adding opengrep, and settled by headless `claude -p` runs
+against probe hooks rather than by reading again:
+
+| output | effect on the turn |
+| --- | --- |
+| top-level `decision: "block"` + `reason` | held; the agent continues with the reason |
+| `hookSpecificOutput.decision` | ignored |
+| `hookSpecificOutput.additionalContext` | **also continues the agent** |
+| `systemMessage` | shown to the person; the turn ends |
+
+The second row is the bug. The third mattered as much: the "report once and let
+go" pass used `additionalContext`, which would have kept the agent going, a
+second block by another name. So Stop blocks with top-level `decision`, and
+everything that must not hold the turn — the second pass, notes, a crash — goes
+to the person through `systemMessage`. After the fix, a real headless session
+asked only to say hello was held on an uncommitted violation, dealt with it, and
+was released. **A hook contract is verified by running a real session, not by
+reading the docs.**
 
 ### Hooks reach a repo the way husky's do
 
@@ -516,7 +538,8 @@ check exist, with three adapters: **eslint** (`sec.jwt.no-none-algorithm`,
 `test.no-conditional-assertion`), **dependency-cruiser**
 (`be.layer.no-db-client-outside-repository`) and **gitleaks**
 (`sec.no-aws-access-key-id`). Every other mechanical rule is still a regex, some
-of them on purpose (see Phase 2). semgrep is not wired in, and `mutate` is still
+of them on purpose (see Phase 2). opengrep runs the semgrep community rules as
+a gauntlet but claims no corpus rule yet, and `mutate` is still
 the hand-rolled version rather than Stryker. Everything in this section runs.
 
 **Done and verified.**
@@ -609,19 +632,78 @@ the hand-rolled version rather than Stryker. Everything in this section runs.
   stand, and blocks at most once per turn. Mechanical first, with the judgment
   tiers skipped entirely when a pattern already found an error, and skipped
   outside a git repo where there is no way to tell what changed. It gates
-  through the `decision` field and always exits zero, so a crash reports rather
-  than trapping the turn.
+  through a top-level `decision` field and always exits zero, so a crash
+  reports rather than trapping the turn. Until Phase 1 that field was nested
+  where Claude Code ignores it, so the hook never actually blocked; see
+  "Corrected: how Stop blocks".
+- Phase 1: opengrep running the semgrep community rules, the security and
+  configuration gauntlet (see "Phase 1 decisions" under Next). Scanners npm
+  cannot install — opengrep, gitleaks — and the community rules are downloaded
+  on first use into `~/.cache/agentic-qa/`, each pinned (binaries by version and
+  SHA-256, rules by commit), with `agentic-qa setup` to do it ahead of time and
+  CI caching the result. opengrep runs at Stop, on commit and in CI but not per
+  edit, and loads only the rule sets for the kinds of file changed. Its notes
+  reach the person at Stop. A Stop after a one-file change in `orders-admin`
+  takes about 4.6s; the per-edit hook stays under a second.
 
 ---
 
 ## Next
 
-### 1. Phase 0 is done; measure the per-edit cost before Phase 1
+### 1. Phase 1 follow-ups: our own AST rules, and claims on the gauntlet
 
-All three Phase 0 adapters are built (see Status). Before semgrep adds a fourth
-engine to every PostToolUse call, time the hook on a realistic edit in
-`orders-admin` and decide whether some engines belong only at Stop, commit and
-CI. semgrep in particular starts slowly.
+The engine and the gauntlet are in (see Status). What is left of Phase 1:
+
+- **Rewrite the regex security rules as opengrep rules of our own**, shipped in
+  `config/` under this repo's license. Measured on a file built to trip regexes,
+  three AST rules got every case right where the patterns produced two false
+  positives (a `sha256` checksum in a file that also hashes a password, and
+  `httpOnly: false` inside a string) — and they matched Hono and Express alike,
+  which the community rules do not.
+- **Claim community rules in the corpus** where one covers a corpus rule
+  better, so its findings block: the public-ingress security group rule is the
+  first candidate, since the pattern would also flag an ordinary `0.0.0.0/0`
+  egress. Each claim needs the coverage test to run against the cached rules.
+- **Watch the Hono gap.** The community rules' taint tracking knows Express
+  request objects and not Hono's `c.req`: on a probe app, SQL injection, SSRF,
+  path traversal, open redirect and command injection were all found in Express
+  and all missed in the identical Hono code. Hono-aware source rules of our own
+  would recover most of that, and are probably the highest-value rules left to
+  write for the target stack.
+- **The escape hatch gets abused.** In the headless Stop test, an agent without
+  edit permission proposed silencing a real violation with a `qa-ignore` whose
+  reason was false ("this is test code"). See the open question on auditing it.
+
+### Phase 1 decisions
+
+Worth not relitigating:
+
+- **Opengrep, not semgrep, as the engine.** Both are LGPL and run the same rules;
+  on the probe app opengrep matched semgrep's findings and added one, in less
+  time. Opengrep is a single downloadable binary, so it can be provisioned
+  automatically; semgrep is a 230MB Python install that cannot.
+- **The community rules are downloaded, never vendored.** Their license permits
+  use for your own purposes and forbids redistribution, and this repository is
+  public, so committing them would be distributing them. Making the repository
+  private was considered and rejected: every install would need GitHub
+  credentials, and it would not have removed the need to get the rules onto each
+  machine. The Opengrep fork of the rules (a December 2024 snapshot, LGPL plus
+  Commons Clause) could be vendored, but it is frozen and forbids selling.
+- **Pinned and checksummed.** A binary is checked against a pinned SHA-256
+  before it is ever run; the rules are pinned to a commit. Updating either is a
+  one-line reviewed change in `src/tools/provision.ts`. A failed download fails
+  open locally and closed in CI, like any missing scanner. Unit tests never
+  download (`AGENTIC_QA_NO_DOWNLOAD`); they use what is cached or skip, and CI
+  runs `setup` first so nothing is skipped there.
+- **Kept out of the per-edit hook.** Loading rules dominates: about 3.4s for the
+  JavaScript set, 1.3s for TypeScript, 5.4s for Terraform, against 20ms per
+  scan once loaded. Rule sets are chosen by file type, so a TypeScript-only turn
+  pays about 4s. The per-edit hook is a fresh process each time; in it, eslint
+  spends ~500ms of its time loading and ~20ms linting, so a long-lived process
+  is the lever if the per-edit hook ever needs to get faster.
+- **Notes surface at Stop without holding the turn.** The per-edit hook already
+  shows the fast engines' notes; Stop shows the slow ones' to the person via
+  `systemMessage`, and to the agent only when it is being held anyway.
 
 Decided while building the eslint half, and worth not relitigating:
 
@@ -632,20 +714,15 @@ Decided while building the eslint half, and worth not relitigating:
 - **A claimed rule in a path the corpus rule excludes is a gauntlet warning**,
   not dropped: the exclusion means the promise does not apply there, not that
   the tool is wrong.
-- **Stop sees corpus findings only.** The per-edit hook shows gauntlet notes,
-  capped at ten, for the file just edited.
+- **Stop blocks on corpus findings only.** The per-edit hook shows the fast
+  engines' notes, capped at ten, for the file just edited; Stop shows the slow
+  engines' notes without blocking on them.
 - **Not type-aware yet.** typescript-eslint's type-checked presets need a
   tsconfig the checked repo may not have, and a program build per run.
 - **Gauntlet noise is already measurable.** On this repo: 31 notes, including a
   real unused import, and `sonarjs/no-os-command-from-path` on every
   `execFileSync("git")`, which is noise here. The answer is the ratchet (item 5)
   and trimming the preset deliberately, not filtering output to the corpus.
-
-### 2. Phase 1: semgrep OSS
-
-Replaces the security patterns, which are nine of the 22 rules and the ones a
-regex is worst at. Vendor the rulesets so they are pinned and reviewable, and
-let network-dependent rules fail open.
 
 ### 3. Phase 2: retire the superseded rules and prove parity
 

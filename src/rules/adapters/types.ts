@@ -29,6 +29,12 @@ export type ToolRun =
 
 export interface Adapter {
   tool: string;
+  /**
+   * Seconds rather than milliseconds per run. Left out of the per-edit hook,
+   * which fires on every Edit and Write; its corpus rules are still enforced at
+   * the turn boundary, on commit and in CI.
+   */
+  slow?: boolean;
   /** Whether this tool has anything to say about a file at all. */
   handles(file: string): boolean;
   run(cwd: string, files: string[]): Promise<ToolRun>;

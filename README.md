@@ -61,45 +61,46 @@ Every rule must say how it is enforced:
 
 | tier | enforced by | cost |
 | --- | --- | --- |
-| `mechanical` | a real engine (eslint, dependency-cruiser, gitleaks), or a pattern where none covers it | free, every line, always |
+| `mechanical` | a real scanner, or a hand-written pattern where no scanner does it well | free |
 | `llm` | a model reads the file and judges | about a cent, opt-in |
 | `human` | should this exist at all | no tool answers this |
 
-A linter beats a model at what a linter can see. The `llm` tier is for what one
-cannot express: does this handler check the caller *owns* the record, does this
-catch block hide a failure.
+A scanner beats a model at what a scanner can see. The `llm` tier is for what one
+cannot: does this handler check the caller *owns* the record, does this catch
+block hide a failure.
 
-The mechanical tier runs eslint broadly — typescript-eslint, eslint-plugin-sonarjs
-and the vitest plugin, on recommended presets — dependency-cruiser for import
-layering, and gitleaks for secrets, all from configs that ship with the package.
-Secret findings never quote the source line. It reports two kinds of
-finding:
+**The scanners.** All run from configs that ship with this package, so every repo
+gets the same checks.
 
-- **Corpus findings.** A rule with `enforcement: { kind: external, tool: <tool>,
-  rule: <id> }` claims that tool's rule. Its findings carry the corpus rule's id
-  and severity, and errors block. Before reporting, the tool checks that every
-  claimed rule is actually switched on for the files it checks, and refuses to
-  run if one is not: a dropped plugin must not look like clean code.
-- **Gauntlet notes.** Everything else a tool reports, as `<tool>:<rule>`. Shown,
-  never blocking.
+| scanner | looks for |
+| --- | --- |
+| eslint (typescript-eslint, sonarjs, vitest plugin) | bugs, code smells, test mistakes |
+| dependency-cruiser | imports that break layering, circular dependencies |
+| gitleaks | secrets and credentials |
+| opengrep, running the semgrep community rules | security holes (injection, SSRF, redirects, XSS) and risky Terraform, Dockerfiles and GitHub Actions |
 
-`qa-ignore` silences either, by the id shown in brackets. A tool that cannot run
-is reported with the rules it left unenforced, and fails the run under `CI`.
+**Two kinds of result.**
 
-> **Where this is heading.** Four corpus rules are delegated so far. The rest are
-> hand-written patterns: some are being replaced by semgrep OSS on the same
-> seam, and some stay because they
-> cover the target stack better than the engine rule does. The judgment tier is unaffected; it is the part
-> no free tool covers. See [ROADMAP.md](ROADMAP.md) — "Reversed: the mechanical
-> tier delegates to existing scanners".
+- **Errors and warnings** come from rules in this repo's own corpus
+  (`rules/*.yaml`). A corpus rule either runs its own pattern or names the
+  scanner rule that enforces it. Errors block.
+- **Notes** are everything else a scanner reports, labelled `<scanner>:<rule>`.
+  They are there to be seen and never block.
+
+If a corpus rule names a scanner rule that has been switched off, the check
+refuses to run rather than report clean code it never checked. Findings about
+secrets never repeat the secret.
 
 ```
 ERROR api/handlers.ts:4
   Import the database client only inside the repository layer. [be.layer.no-db-client-outside-repository]
   import { sql } from "drizzle-orm";
+
+note  api/app.ts:24 The application redirects to a URL specified by user-supplied input. [opengrep:javascript.express.security.audit.express-open-redirect]
 ```
 
-Turn one rule off, in one place, with a reason:
+Turn one rule off, in one place, with a reason. The same comment works for a
+corpus rule or a note, using the id in brackets:
 
 ```ts
 localStorage.setItem("authToken", token); // qa-ignore: fe.storage.no-token-in-local-storage - demo build only
@@ -162,45 +163,71 @@ Code login with no API key. Roughly **two cents** per judged file. Checking a
 50-test suite from cold costs about a dollar; day to day, almost every run is
 free because almost nothing changed.
 
+## What it downloads
+
+Two scanners are standalone programs that npm cannot install, and the semgrep
+community rules cannot be bundled in this package (their license forbids
+redistributing them). So the first time a check needs them, it downloads them:
+
+- opengrep and gitleaks, each a single program at a pinned version, checked
+  against a pinned SHA-256 before it is ever run
+- the semgrep community rules, pinned to one commit
+
+They go in `~/.cache/agentic-qa/` and are reused after that, offline. A new
+machine or CI runner sets itself up the first time it runs a check; nothing needs
+installing by hand. To download ahead of time instead:
+
+```
+npx agentic-qa setup
+```
+
+Updating any of them means changing its pin in `src/tools/provision.ts`, so an
+update is a reviewed change, never a surprise.
+
+If a download is impossible (offline on a first run), that scanner is skipped
+with a warning naming the rules it left unchecked. In CI it fails the run
+instead.
+
 ## Where it runs
 
-Four places, all calling the same binary, so what the agent is told cannot
-drift from what the gate enforces.
+Four places, all calling the same binary, so what the agent is told cannot drift
+from what the gate enforces.
 
-- **While the agent works** — a `PostToolUse` hook. Checks the file just edited
-  and reports straight back to Claude, in about a quarter of a second. Always
-  exits zero: it reports, it never blocks.
-- **When the agent finishes a turn** — a `Stop` hook. Checks everything the turn
-  changed, however it was changed, and refuses to let the agent finish while
-  problems remain. This is the one that steers: the agent is still holding the
-  context that produced the code, unlike in CI. It blocks once, then reports and
-  gets out of the way, so it can never trap a session.
-- **On commit** — a git hook. Mechanical tier only, so commits stay fast, free
-  and offline. It lives in a committed `hooks/` directory, and the `prepare`
-  script points `core.hooksPath` at it on every `npm install`, so a fresh clone
-  is gated without anyone typing a git command.
-- **In CI** — everything, including the judgment tiers. The layer nobody can skip
-  with `--no-verify`.
+| where | what runs | blocks? | time |
+| --- | --- | --- | --- |
+| after each edit (`PostToolUse`) | the file just edited; eslint, dependency-cruiser, gitleaks | never; reports to Claude | under a second |
+| end of each turn (`Stop`) | everything the turn changed; every scanner, then the judgment tiers | yes, once per turn | about 5s, plus any judging |
+| on commit (git hook) | staged files; every scanner, no model calls | yes | about 5s |
+| CI | everything, including the judgment tiers | yes | minutes |
+
+- **After each edit** is quick feedback. opengrep is left out because it takes
+  seconds, and this fires on every edit.
+- **End of each turn** is the one that steers. If a rule is broken, the agent is
+  not allowed to finish and is told why while it still has the context that
+  produced the code. It blocks once, then tells you and lets the turn end, so it
+  can never trap a session. opengrep's notes are shown to you here, without
+  holding the turn.
+- **On commit** lives in a committed `hooks/` directory, and the `prepare` script
+  points git at it on every `npm install`, so a fresh clone is gated without
+  anyone typing a git command.
+- **CI** is the layer nobody can skip with `--no-verify`.
 
 `init` does not write a CI config, because that file is committed, is different
 for every provider, and costs money on every push. Add these steps to whatever
 you already use:
 
-The mechanical tier needs **gitleaks** on the path, because it is a binary and
-npm cannot install it. Locally a missing gitleaks is a warning naming the rules it
-leaves unchecked; under `CI` it fails the run. Install the version the vendored
-ruleset came from (see `GITLEAKS_CONFIG_VERSION`), as `qa.yml` does.
-
 ```yaml
-- run: npx agentic-qa rules         # free, no key needed; needs gitleaks installed
-- run: npx agentic-qa rules --llm   # needs ANTHROPIC_API_KEY
-- run: npx agentic-qa contracts     # needs ANTHROPIC_API_KEY
+- run: npx agentic-qa setup          # download the pinned scanners and rules
+- run: npx agentic-qa rules          # free, no key needed
+- run: npx agentic-qa rules --llm    # needs ANTHROPIC_API_KEY
+- run: npx agentic-qa contracts      # needs ANTHROPIC_API_KEY
 ```
 
-The judgment steps need `ANTHROPIC_API_KEY` as a secret, because `claude -p`
-rides on your local Claude Code login and CI has none. `.github/workflows/qa.yml`
-in this repo is a working example, including skipping those steps when the
-secret is absent so a fork's pull request still gets the free tier.
+Cache `~/.cache/agentic-qa` between runs so the download happens once. The
+judgment steps need `ANTHROPIC_API_KEY` as a secret, because `claude -p` rides on
+your local Claude Code login and CI has none. `.github/workflows/qa.yml` in this
+repo is a working example of both, including skipping the judgment steps when
+the secret is absent so a fork's pull request still gets the free tier.
 
 ## Checking the checker
 
@@ -213,8 +240,8 @@ agentic-qa eval      # the contract judge
 agentic-qa rules --expected expected.json    # the rules
 ```
 
-Current: 5/5 contracts, 14/14 rule violations with no false positives across
-seven clean controls, 19/19 judgment verdicts with nothing in either direction.
+Current: 5/5 contracts, 19/19 rule violations with no false positives across
+eight clean controls, 19/19 judgment verdicts with nothing in either direction.
 
 Run it after any change to a prompt, a model, or a schema.
 

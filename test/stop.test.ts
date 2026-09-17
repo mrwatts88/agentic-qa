@@ -4,6 +4,8 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { runStop } from "../src/stop";
+import { defaultAdapters } from "../src/rules/adapters/index";
+import type { Adapter } from "../src/rules/adapters/types";
 
 let dir: string;
 let output: string;
@@ -19,9 +21,11 @@ function git(...args: string[]): void {
 }
 
 /** The first firing of a turn: nothing has blocked yet. */
-const FIRST = { stopHookActive: false, judgment: false };
+// The fast engines only: the slow ones download their binaries on first use,
+// which a unit test must not do. Their behaviour is covered in adapters.test.ts.
+const FIRST = { stopHookActive: false, judgment: false, adapters: defaultAdapters({ fast: true }) };
 /** The second: a Stop hook has already held this turn once. */
-const AGAIN = { stopHookActive: true, judgment: false };
+const AGAIN = { stopHookActive: true, judgment: false, adapters: defaultAdapters({ fast: true }) };
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "agentic-qa-stop-"));
@@ -45,11 +49,11 @@ describe("the Stop hook", () => {
     await runStop(dir, FIRST);
     const payload = JSON.parse(output);
 
-    expect(payload.hookSpecificOutput.hookEventName).toBe("Stop");
-    expect(payload.hookSpecificOutput.decision).toBe("block");
-    expect(payload.hookSpecificOutput.reason).toContain(
-      "fe.storage.no-token-in-local-storage",
-    );
+    // Top level. Nested in hookSpecificOutput, Claude Code ignores it: this
+    // test used to assert the nested shape, and the hook never blocked.
+    expect(payload.decision).toBe("block");
+    expect(payload.reason).toContain("fe.storage.no-token-in-local-storage");
+    expect(payload.hookSpecificOutput).toBeUndefined();
   });
 
   /**
@@ -70,7 +74,7 @@ describe("the Stop hook", () => {
 
     await runStop(dir, FIRST);
 
-    expect(JSON.parse(output).hookSpecificOutput.reason).toContain("qa-ignore");
+    expect(JSON.parse(output).reason).toContain("qa-ignore");
   });
 
   /**
@@ -85,10 +89,11 @@ describe("the Stop hook", () => {
     await runStop(dir, AGAIN);
     const payload = JSON.parse(output);
 
-    expect(payload.hookSpecificOutput.decision).toBeUndefined();
-    expect(payload.additionalContext).toContain(
-      "fe.storage.no-token-in-local-storage",
-    );
+    expect(payload.decision).toBeUndefined();
+    // additionalContext would continue the agent, which is a second block by
+    // another name. systemMessage reaches the person and lets the turn end.
+    expect(payload.hookSpecificOutput).toBeUndefined();
+    expect(payload.systemMessage).toContain("fe.storage.no-token-in-local-storage");
   });
 
   it("says nothing at all when the turn is clean", async () => {
@@ -114,7 +119,7 @@ describe("the Stop hook", () => {
 
     await runStop(dir, FIRST);
 
-    expect(JSON.parse(output).hookSpecificOutput.reason).toContain("shell.ts");
+    expect(JSON.parse(output).reason).toContain("shell.ts");
   });
 
   /** Complaining about code this turn never touched is how a hook dies. */
@@ -130,6 +135,44 @@ describe("the Stop hook", () => {
 
     expect(code).toBe(0);
     expect(output).toBe("");
+  });
+
+  /** A slow engine runs only here, so this is where its notes have to surface. */
+  describe("notes from the slow engines", () => {
+    const slow: Adapter = {
+      tool: "slowscan",
+      slow: true,
+      handles: () => true,
+      run: async () => ({
+        status: "ran",
+        findings: [{ rule: "open-redirect", file: "app.ts", line: 1, message: "Redirect from user input." }],
+      }),
+      isLive: async () => true,
+    };
+
+    it("shows them to the person without holding the turn", async () => {
+      git("init");
+      write("app.ts", "export const redirect = 1;\n");
+
+      await runStop(dir, { ...FIRST, adapters: [slow] });
+      const payload = JSON.parse(output);
+
+      expect(payload.decision).toBeUndefined();
+      expect(payload.hookSpecificOutput).toBeUndefined();
+      expect(payload.systemMessage).toContain("slowscan:open-redirect");
+    });
+
+    it("hands them to the agent alongside a block, since it is continuing anyway", async () => {
+      git("init");
+      write("app.ts", 'localStorage.setItem("authToken", token);\n');
+
+      await runStop(dir, { ...FIRST, adapters: [...defaultAdapters({ fast: true }), slow] });
+      const payload = JSON.parse(output);
+
+      expect(payload.decision).toBe("block");
+      expect(payload.reason).toContain("fe.storage.no-token-in-local-storage");
+      expect(payload.reason).toContain("slowscan:open-redirect");
+    });
   });
 
   /**
@@ -148,7 +191,8 @@ describe("the Stop hook", () => {
     const payload = JSON.parse(output);
 
     expect(code).toBe(0);
-    expect(payload.hookSpecificOutput.decision).toBeUndefined();
-    expect(payload.additionalContext).toContain("could not run");
+    expect(payload.decision).toBeUndefined();
+    expect(payload.hookSpecificOutput).toBeUndefined();
+    expect(payload.systemMessage).toContain("could not run");
   });
 });

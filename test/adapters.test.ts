@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import type { Rule } from "../src/rules/types";
@@ -10,6 +10,7 @@ import { ruleAppliesTo } from "../src/rules/route";
 import { defaultAdapters } from "../src/rules/adapters/index";
 import { dependencyCruiser } from "../src/rules/adapters/dependency-cruiser";
 import { gitleaks } from "../src/rules/adapters/gitleaks";
+import { binaryPath, GITLEAKS } from "../src/tools/provision";
 import { execFileSync } from "node:child_process";
 
 let dir: string;
@@ -330,10 +331,11 @@ function installed(binary: string): boolean {
 }
 
 /**
- * Needs the real binary. Skipped on a machine without it, never in CI: CI is
- * where a missing scanner is a repo problem, so there these must run.
+ * Needs the real binary, provisioned or installed; tests never download it.
+ * Skipped on a machine with neither, never in CI, which runs `setup` first:
+ * CI is where a missing scanner is a repo problem, so there these must run.
  */
-describe.skipIf(!installed("gitleaks") && !process.env.CI)("the gitleaks adapter", () => {
+describe.skipIf(!existsSync(binaryPath(GITLEAKS)) && !installed("gitleaks") && !process.env.CI)("the gitleaks adapter", () => {
   beforeEach(() => {
     write("deploy.env", "AWS_ACCESS_KEY_ID=ASIAZ7QK3MXN4TPW2RVB\n");
     write("README.md", "aws_access_key_id = AKIAIOSFODNN7EXAMPLE\n");

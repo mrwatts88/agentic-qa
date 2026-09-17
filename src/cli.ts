@@ -16,12 +16,14 @@ import { selectFiles } from "./rules/select.js";
 import { runMechanical } from "./rules/mechanical.js";
 import { evaluateRules, evaluateLlmRules } from "./rules/evaluate.js";
 import { runLlmRules } from "./rules/llm.js";
+import { ensureBinary, ensureSemgrepRules, GITLEAKS, OPENGREP, SEMGREP_RULES } from "./tools/provision.js";
 
 const USAGE = `agentic-qa - rule enforcement for AI-written code
 
 Usage:
   agentic-qa init [options]         write qa.config.yaml; add call sites only if asked
   agentic-qa install-hooks          point core.hooksPath at hooks/ (run from prepare)
+  agentic-qa setup                  download the pinned scanners and rules now
   agentic-qa hook                   PostToolUse hook: report on what just changed
   agentic-qa stop                   Stop hook: check the whole turn, block once on findings
   agentic-qa rules [options]        check changed code against the rules corpus
@@ -106,6 +108,28 @@ async function main(): Promise<number> {
       stopHookActive: stopHookActive ?? false,
       judgment: !values.mechanical,
     });
+  }
+
+  // Downloads the pinned scanners and rules now rather than on first use. Every
+  // check provisions on demand anyway; this is for CI, and for a machine that
+  // should not pay the download inside its first Stop hook.
+  if (command === "setup") {
+    const steps: [string, () => Promise<string>][] = [
+      [`opengrep ${OPENGREP.version}`, () => ensureBinary(OPENGREP)],
+      [`gitleaks ${GITLEAKS.version}`, () => ensureBinary(GITLEAKS)],
+      [`semgrep rules ${SEMGREP_RULES.commit.slice(0, 7)}`, () => ensureSemgrepRules()],
+    ];
+    let failed = false;
+    for (const [label, provision] of steps) {
+      try {
+        const path = await provision();
+        process.stdout.write(`${pc.green("ready ")} ${label} ${pc.dim(path)}\n`);
+      } catch (err) {
+        failed = true;
+        process.stdout.write(`${pc.red("failed")} ${label}: ${(err as Error).message}\n`);
+      }
+    }
+    return failed ? 1 : 0;
   }
 
   // Runs from the repo's prepare script on every npm install, so it must stay

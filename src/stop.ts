@@ -3,6 +3,9 @@ import { loadConfig } from "./config.js";
 import { loadRules } from "./rules/load.js";
 import { selectFiles } from "./rules/select.js";
 import { runMechanical } from "./rules/mechanical.js";
+import type { Adapter } from "./rules/adapters/types.js";
+import type { Finding } from "./rules/types.js";
+import { defaultAdapters } from "./rules/adapters/index.js";
 import { runLlmRules } from "./rules/llm.js";
 import { checkContracts } from "./contracts/check.js";
 import { changedFiles } from "./hook.js";
@@ -30,8 +33,23 @@ export interface StopOptions {
   stopHookActive: boolean;
   /** Whether to run the tiers that cost money and need the network. */
   judgment: boolean;
+  /** The engines to run; every one by default. Tests pass the fast ones. */
+  adapters?: Adapter[];
 }
 
+/**
+ * The output shapes, each verified against a real headless Claude Code run
+ * rather than read off a page, because the first version got them wrong and
+ * its tests only checked what it emitted:
+ *
+ * - top-level `decision: "block"` with `reason` holds the turn. Nested inside
+ *   `hookSpecificOutput`, as this hook shipped for a while, it is ignored, so
+ *   the hook looked wired and never blocked anything.
+ * - `hookSpecificOutput.additionalContext` also keeps the agent going. It is
+ *   not a passive note, so it is never used for anything that must not hold
+ *   the turn.
+ * - `systemMessage` is shown to the person and lets the turn end.
+ */
 function emit(payload: unknown): void {
   process.stdout.write(JSON.stringify(payload) + "\n");
 }
@@ -41,6 +59,15 @@ const FIX_OR_EXCUSE = [
   "comment naming the rule, for example:",
   "  // qa-ignore: <rule-id> - why this case is different",
 ].join("\n");
+
+/** Notes from the slow engines are shown here, since the per-edit hook skips them. */
+const NOTE_LIMIT = 15;
+
+function noteLines(notes: Finding[]): string[] {
+  const shown = notes.slice(0, NOTE_LIMIT).map((f) => `- ${f.file}:${f.line} ${f.statement} [${f.ruleId}]`);
+  const more = notes.length - shown.length;
+  return more > 0 ? [...shown, `- ...and ${more} more (run: agentic-qa rules)`] : shown;
+}
 
 export async function runStop(cwd: string, options: StopOptions): Promise<number> {
   try {
@@ -57,16 +84,21 @@ export async function runStop(cwd: string, options: StopOptions): Promise<number
     const files = await selectFiles(cwd, config, rules, scope);
     if (!files.length) return 0;
 
-    const findings: string[] = [];
+    const adapters = options.adapters ?? defaultAdapters();
+    const result = await runMechanical(cwd, files, rules, { adapters });
 
-    // Only what the corpus promised. The gauntlet reports and never gates, and
-    // the per-edit hook has already shown it to the agent file by file.
-    const mechanical = (await runMechanical(cwd, files, rules)).findings.filter(
-      (f) => f.origin === "corpus",
-    );
+    const findings: string[] = [];
+    const mechanical = result.findings.filter((f) => f.origin === "corpus");
     for (const f of mechanical) {
       findings.push(`- ${f.file}:${f.line} ${f.statement} [${f.ruleId}]`);
     }
+
+    // The per-edit hook already showed the fast engines' notes, file by file.
+    // The slow engines run only here, so this is the one place theirs surface.
+    const slowTools = new Set(adapters.filter((a) => a.slow).map((a) => `${a.tool}:`));
+    const notes = result.findings.filter(
+      (f) => f.origin === "gauntlet" && [...slowTools].some((t) => f.ruleId.startsWith(t)),
+    );
 
     // The enforcement ladder, applied at runtime rather than only when a rule
     // is written: there is no point paying a model to judge code that already
@@ -89,40 +121,45 @@ export async function runStop(cwd: string, options: StopOptions): Promise<number
       }
     }
 
-    if (!findings.length) return 0;
+    const unenforced = result.unenforced.map(
+      (u) => `${u.tool} did not run (${u.reason})${u.rules.length ? `; unchecked: ${u.rules.join(", ")}` : ""}`,
+    );
 
-    const summary = `agentic-qa found ${findings.length} problem(s) in what this turn changed:`;
+    const noteSection = notes.length
+      ? [`Scanners also noted ${notes.length} thing(s). These never block:`, ...noteLines(notes)]
+      : [];
 
-    if (options.stopHookActive) {
-      // Already blocked once this turn. Say it again and get out of the way.
+    if (findings.length && !options.stopHookActive) {
+      const summary = `agentic-qa found ${findings.length} problem(s) in what this turn changed:`;
       emit({
-        hookSpecificOutput: { hookEventName: "Stop" },
-        additionalContext: [
-          summary,
-          "",
-          ...findings,
-          "",
-          "Reported rather than blocked: this turn has already been held once.",
+        decision: "block",
+        reason: [
+          summary, "", ...findings, "", FIX_OR_EXCUSE,
+          ...(noteSection.length ? ["", ...noteSection] : []),
         ].join("\n"),
       });
       return 0;
     }
 
-    emit({
-      hookSpecificOutput: {
-        hookEventName: "Stop",
-        decision: "block",
-        reason: [summary, "", ...findings, "", FIX_OR_EXCUSE].join("\n"),
-      },
-    });
+    // Nothing to hold the turn for, or it has already been held once. Tell the
+    // person and let the turn end: blocking again is how a session becomes
+    // unable to finish, and anything addressed to the agent would continue it.
+    const message = [
+      ...(findings.length
+        ? [
+            `agentic-qa: ${findings.length} problem(s) still stand after this turn was held once:`,
+            ...findings,
+          ]
+        : []),
+      ...(noteSection.length ? [`agentic-qa: ${noteSection[0]}`, ...noteSection.slice(1)] : []),
+      ...unenforced.map((u) => `agentic-qa: ${u}`),
+    ];
+    if (message.length) emit({ systemMessage: message.join("\n") });
   } catch (err) {
     // Never block on our own failure: a checker that traps the turn when it
     // breaks is worse than no checker. Surfaced, though, because silence from
     // a checker reads as approval.
-    emit({
-      hookSpecificOutput: { hookEventName: "Stop" },
-      additionalContext: `agentic-qa could not run: ${(err as Error).message}`,
-    });
+    emit({ systemMessage: `agentic-qa could not run: ${(err as Error).message}` });
   }
 
   return 0;
