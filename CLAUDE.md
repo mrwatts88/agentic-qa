@@ -8,6 +8,11 @@ Hono/TypeScript, Postgres, AWS/Terraform.
 the status, the remaining work, and the reasoning behind decisions already made,
 including several that were reached by getting them wrong first.
 
+**The corpus is a guide to building software, not a rule list.** It starts
+from the owner's `~/code/full-stack-swe` (12 chapters, ~34,500 words), ships in
+this package, and is ours to edit. The rules in `rules/*.yaml` are a test set.
+Design for hundreds of concepts: anything that lists them all does not scale.
+
 **The calibration target is `~/code/orders-admin`**, a separate repo: a small
 CRUD app on the target stack that installs this tool as a git dependency. A rule
 change is not finished until it has been run against both the fixtures here and
@@ -204,9 +209,10 @@ grounding needs.
 - **Steering is generated, never written.** The SessionStart text is built from
   the loaded rules at the start of every session, so a corpus change reaches
   the agent with no step to remember, and it cannot name a check that does not
-  run. It lists only rules that match some file in the repo, falling back to
-  all of them while the repo has no code; a test holds it under 4,000
-  characters, and outgrowing that means choosing what to show, not raising it.
+  run. **It is being reshaped (ROADMAP Next 2):** today it lists every rule,
+  which works for the 25-rule test set and not for the real corpus. The real
+  corpus is the guide — hundreds of concepts — so steering becomes an index of
+  its chapters that the agent reads on demand. Never grow the rule list.
 - **Stop runs the mechanical corpus only.** Judgment was tried there and does
   not fit a turn: on one feature's worth of changes it made about 30 model
   calls, took minutes, overran the hook timeout and was cancelled having checked

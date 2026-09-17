@@ -89,7 +89,7 @@ What each place runs, once built:
   the agent knows which principle it broke but not what the judge saw. The block
   must include the judge's reason and the rule's rationale. Contract findings
   already carry their reason.
-- **Session-start steering: reversed, now Next item 2.** It was deferred while
+- **Session-start steering: reversed, now Next item 2, as an index of the guide.** It was deferred while
   judgment blocked at Stop, on the view that the agent learns a rule the moment
   it breaks one. Judgment left Stop after trial 2, so the only automatic moment
   left to tell the main model about the judgment rules is before it writes.
@@ -924,35 +924,55 @@ reasoning. What landed, beyond the decision as written:
   blocking when on. Stop cannot.
 - **`agentic-qa rules` reports the corpus only**, like the call sites.
 
-### 2. Session-start steering: tell the agent the guardrails before it writes
+### 2. The guide ships, and steering becomes an index of it
 
-Built: `agentic-qa session-start`, installed by `init --claude-hook`, with a
-smoke scenario proving the agent receives it. Its effect on what the agent
-writes is measured by item 4's trial.
+**Decided 2026-09-17.** The corpus is not a list of rules. The owner's
+`~/code/full-stack-swe` is 12 chapters, about 34,500 words and 250 sections of
+how to build software; classified, it is hundreds of concepts. The 25 rules here
+were a test set, and the first steering text was built as if they were the
+corpus: a list of every rule, 3,061 characters for 25, which is useless at 500.
 
-Prevention, where the review below is detection. A `SessionStart` hook, installed
-by `init --claude-hook`, puts a short form of the corpus in front of the main
-model — Opus or Fable — before it writes anything: what will be checked, and how
-to treat a finding. The text ships in the package and is generated from the
-corpus, so it cannot drift from what is enforced, and no consuming repo's
-CLAUDE.md changes. A strong model told the rules up front avoids most of what a
-reviewer would otherwise catch, at no per-call cost.
-
-- Short enough to be read, not skimmed: rule statements grouped by area, not
-  rationales. Measure its size; it is paid on every session.
-- Verified by a smoke scenario: a session asked to build something a rule
-  forbids, with the hook on and off, and the difference recorded.
-- Rerun the `orders-admin` trial prompt with it on, and compare what the review
-  finds against trials 1 and 2.
+- **The guide ships in this package** as `guide/`, and is ours to edit.
+  `full-stack-swe` is its starting point and inspiration, not a spec this repo
+  must track; it may diverge.
+- **Three consumers, each routed differently:**
+  - *Mechanical rules* stay engine claims. Engines already run thousands of rules
+    and cost the agent nothing until one fires; this part grows by writing claims.
+  - *Steering* is an index, not a list: one line per chapter or area — what it
+    covers, when it applies ("touching auth or sessions: chapter 5") — plus how
+    findings and exceptions work. The agent reads a chapter, shipped in the
+    package, when its work enters that area. The index stays a few hundred words
+    however large the guide grows. This is the Claude Code skills pattern.
+  - *Review* (item 3) reads chapter text, not rule lists.
+- **Rework what was built:** `agentic-qa session-start`, its hook and smoke
+  scenario stay; the text it emits becomes the index, generated from the guide's
+  own headings and a short per-chapter "applies when" line kept in the guide,
+  so an edited guide needs no second step. The size test moves to the index.
+  Chapters whose area matches no file in the repo are still listed but marked,
+  since a repo gains areas.
+- **Verified by a smoke scenario:** an agent asked to do auth work reports that
+  it read the auth chapter, and one asked for an unrelated change does not.
+- The earlier bullets hold: generated, never hand-copied; it travels in hook
+  output, not a consuming repo's CLAUDE.md.
 
 ### 3. One independent review per piece of work: `agentic-qa review`
 
 Replaces the per-rule, per-file judge calls, which trial 2 measured at about 30
 calls and minutes per feature. One fresh `claude -p` call on **Opus 5 at high
-effort** is handed the whole change — changed files, the judgment rules, the
-tests and their descriptions — and asked one question: does this change break
-any of these rules, and do these tests check what they claim? It returns
-findings, each with a file, a line, what it saw and why it matters.
+effort** is handed the whole change — changed files, their tests and test
+descriptions — with the guide chapters that change touches, and asked: where does
+this change depart from the guide, and do these tests check what they claim? It
+returns findings, each with a file, a line, what it saw, and the guide section it
+departs from.
+
+- **Routing is for focus, not fit.** Chapters are chosen from the changed files
+  and what the diff touches. The whole guide is about 45,000 tokens, which fits
+  in one Opus call beside a normal diff, so a routing miss costs focus, never
+  coverage: past a small change, include every chapter whose area the change
+  plausibly touches rather than the fewest.
+- **Judgment rules become evaluation, not prompt.** Classified concepts give the
+  eval corpora their known answers and the coverage report its rows; the review
+  judges from the prose.
 
 - **Independent judgment, findings to the author.** The review has no view of
   the session that wrote the code, so it has no stake in its choices. The agent
@@ -1156,6 +1176,12 @@ is noticed, and only a corpus claim (item 11) makes one block.
 
 Everything that writes, moves or retires a rule. Last because a rule is only
 worth as much as the machine that enforces it.
+
+Reshaped by item 2's decision: classifying the guide is no longer the path to
+coverage. The review covers what the guide says in prose. What remains here is
+choosing which concepts to delegate to an engine, because a mechanical check is
+cheaper and surer than any review, and building the known answers the review is
+scored against.
 
 #### Our own AST rules in place of the regex security rules
 
