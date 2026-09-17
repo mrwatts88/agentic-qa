@@ -31,6 +31,8 @@ function emit(additionalContext: string): void {
   );
 }
 
+const GAUNTLET_LIMIT = 10;
+
 /** Paths git reports as modified, added or untracked. */
 export function changedFiles(cwd: string): string[] | undefined {
   try {
@@ -125,24 +127,50 @@ export async function runHook(cwd: string, filePath?: string): Promise<number> {
 
     const files = await selectFiles(cwd, config, rules, scope);
 
-    const findings = runMechanical(cwd, files, rules);
-    if (!findings.length) return 0;
+    const { findings, unenforced } = await runMechanical(cwd, files, rules);
+    const corpus = findings.filter((f) => f.origin === "corpus");
+    const gauntlet = findings.filter((f) => f.origin === "gauntlet");
+    if (!findings.length && !unenforced.length) return 0;
 
-    const lines = findings.map(
-      (f) => `- ${f.file}:${f.line} ${f.statement} [${f.ruleId}]`,
-    );
+    const sections: string[] = [];
 
-    emit(
-      [
-        `agentic-qa found ${findings.length} rule violation(s) in code you just changed:`,
-        "",
-        ...lines,
-        "",
-        "Fix these before moving on. If one is genuinely intended, record it with",
-        "a comment naming the rule, for example:",
-        "  // qa-ignore: <rule-id> - why this case is different",
-      ].join("\n"),
-    );
+    if (corpus.length) {
+      sections.push(
+        [
+          `agentic-qa found ${corpus.length} rule violation(s) in code you just changed:`,
+          "",
+          ...corpus.map((f) => `- ${f.file}:${f.line} ${f.statement} [${f.ruleId}]`),
+          "",
+          "Fix these before moving on. If one is genuinely intended, record it with",
+          "a comment naming the rule, for example:",
+          "  // qa-ignore: <rule-id> - why this case is different",
+        ].join("\n"),
+      );
+    }
+
+    if (gauntlet.length) {
+      // Capped: this is advice about one file, and a wall of it gets skimmed.
+      const shown = gauntlet.slice(0, GAUNTLET_LIMIT);
+      const more = gauntlet.length - shown.length;
+      sections.push(
+        [
+          `Linters also noted ${gauntlet.length} thing(s) in the same code. These do not block;`,
+          "fix the ones that are real, and silence one deliberately with qa-ignore and its id:",
+          "",
+          ...shown.map((f) => `- ${f.file}:${f.line} ${f.statement} [${f.ruleId}]`),
+          ...(more > 0 ? [`- ...and ${more} more`] : []),
+        ].join("\n"),
+      );
+    }
+
+    for (const u of unenforced) {
+      sections.push(
+        `${u.tool} could not run (${u.reason})` +
+          (u.rules.length ? `, so these rules were not checked: ${u.rules.join(", ")}` : ""),
+      );
+    }
+
+    emit(sections.join("\n\n"));
   } catch (err) {
     // Surfaced rather than swallowed: a checker that fails silently is worse
     // than no checker, because its silence reads as approval.

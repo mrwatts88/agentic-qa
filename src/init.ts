@@ -87,7 +87,7 @@ function claudeSettings(runner: string): string {
                   type: "command",
                   command: `${runner} stop`,
                   timeout: 300,
-                  statusMessage: "agentic-qa: checking the turn",
+                  statusMessage: "agentic-qa: rules, judgment tier and test contracts",
                 },
               ],
             },

@@ -49,10 +49,9 @@ rules:
       paths:
         - "**/*.{ts,tsx,js,jsx}"
     enforcement:
-      kind: pattern
-      flags: i
-      pattern: |-
-        algorithms?['"]?\s*:\s*\[?\s*['"]none['"]
+      kind: external
+      tool: eslint
+      rule: sonarjs/insecure-jwt-token
 
   - id: sec.password.no-fast-hash
     statement: Hash passwords with a slow, salted algorithm such as argon2id.

@@ -19,24 +19,77 @@ rules:
         (vi|jest)\.mock\(\s*['"]\.
 
   - id: test.no-conditional-logic
-    statement: No conditionals or loops in a test body.
+    statement: No if, switch or ternary in a test body.
     tier: mechanical
     severity: warn
     rationale: >
-      A test with an if has two tests inside it and neither is guaranteed to
-      run. A test with a loop hides which case failed. Split it, or drive it
-      with a table.
+      A test with a branch in it has two tests inside it, and a ternary that
+      computes the expected value is re-implementing the code under test. Split
+      it, or drive it with a table.
     source: full-stack-swe/06-testing.md
     triggers:
       paths:
         - "**/*.{test,spec}.{ts,tsx}"
+    # Kept as a pattern on purpose, after trying the engine. The nearest eslint
+    # rule, vitest/no-conditional-in-test, reports only an if that is a direct
+    # child of the test callback: not a nested if, not a switch, not a ternary.
+    # Indentation of four or more is the proxy for "inside a test".
+    #
+    # The ternary alternatives want a space either side of both ? and :, which
+    # is how formatted code writes one, and which ?? , ?. and an optional
+    # parameter's ?: never have. The last alternative is a ternary a formatter
+    # broke across lines, starting with ? and continuing with :.
     enforcement:
       kind: pattern
       flags: m
-      # [ \t] rather than \s: \s matches newlines, so the match would start on
-      # the preceding blank line and report the wrong line number.
+      # [ \t] rather than \s throughout: \s matches newlines, so a match could
+      # start on the preceding blank line and report the wrong line number.
       pattern: |-
-        ^[ \t]{4,}(if|for|while)\s*\(
+        ^[ \t]{4,}(?:(?:if|switch)[ \t]*\(|(?!\/\/|\*)[^\n]*?[\w)\]'"`][ \t]\?[ \t][^\n]*?[ \t]:[ \t]|\?[ \t][^\n]*\n[ \t]*:[ \t])
+
+  - id: test.no-conditional-assertion
+    statement: Never put an assertion where it might not run.
+    tier: mechanical
+    severity: error
+    rationale: >
+      An expect inside an if, a ternary, a switch or a catch runs only on one
+      path. When that path is not taken, the test passes without asserting
+      anything, and nothing reports that it did.
+    source: full-stack-swe/06-testing.md
+    triggers:
+      paths:
+        - "**/*.{test,spec}.{ts,tsx}"
+    # Delegated: the engine follows the AST to any depth, which a pattern
+    # cannot. Loops are the one shape it does not treat as conditional; see
+    # test.no-assertion-in-loop.
+    enforcement:
+      kind: external
+      tool: eslint
+      rule: vitest/no-conditional-expect
+
+  - id: test.no-assertion-in-loop
+    statement: Do not assert inside a loop; drive the cases with a table instead.
+    tier: mechanical
+    severity: warn
+    rationale: >
+      A loop that runs zero times asserts nothing, so a test that loops over a
+      computed result passes when the result is empty. A failure inside a loop
+      also hides which case broke. it.each names every case and runs each one.
+      A loop that only builds test data is fine and is not matched.
+    source: full-stack-swe/06-testing.md
+    triggers:
+      paths:
+        - "**/*.{test,spec}.{ts,tsx}"
+    # No engine rule covers this. The body runs to the closing brace at the
+    # loop's own indentation, captured as \1, so nested blocks do not end it
+    # early; a brace-less loop is one line. The (?![ \t]) pins \1 to the whole
+    # indent: without it the capture backtracks to a shorter one, the closing
+    # brace never matches, and a setup loop runs on into the next assertion.
+    enforcement:
+      kind: pattern
+      flags: ms
+      pattern: |-
+        ^([ \t]*)(?![ \t])(?:(?:for[ \t]*(?:await[ \t]*)?|while[ \t]*)\([^\n]*\)|[^\n]*\.forEach\([^\n]*=>)[ \t]*(?:\{(?:(?!\n\1\}).)*?\bexpect\(|[^\n{]*\bexpect\()
 
   - id: test.no-assertion-free-test
     statement: Every test must assert something.

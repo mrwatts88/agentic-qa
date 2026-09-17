@@ -1,11 +1,16 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import type { Rule } from "../src/rules/types";
 import { loadRules } from "../src/rules/load";
 import { ruleAppliesTo, triggerGlobs, normalise } from "../src/rules/route";
 import { runMechanical } from "../src/rules/mechanical";
+
+/** The pattern tier alone, with no engines, so linter output cannot leak in. */
+async function patterns(cwd: string, files: string[], rules: Rule[]) {
+  return (await runMechanical(cwd, files, rules, { adapters: [] })).findings;
+}
 
 let dir: string;
 
@@ -66,7 +71,9 @@ describe("the bundled rule corpus", () => {
 
     expect(mechanical.length).toBeGreaterThan(0);
     expect(llm.length).toBeGreaterThan(0);
-    expect(mechanical.every((r) => r.enforcement.kind === "pattern")).toBe(true);
+    expect(
+      mechanical.every((r) => ["pattern", "external"].includes(r.enforcement.kind)),
+    ).toBe(true);
     expect(llm.every((r) => r.enforcement.kind === "llm")).toBe(true);
     // No rule may carry a tier the runner does not know how to execute.
     expect(mechanical.length + llm.length).toBe(rules.length);
@@ -146,10 +153,10 @@ describe("routing", () => {
 });
 
 describe("the mechanical runner", () => {
-  it("reports a file and line for a matching pattern", () => {
+  it("reports a file and line for a matching pattern", async () => {
     write("a.ts", "const ok = 1;\nconst bad = forbidden();\n");
 
-    const [finding] = runMechanical(dir, ["a.ts"], [rule()]);
+    const [finding] = await patterns(dir, ["a.ts"], [rule()]);
 
     expect(finding.ruleId).toBe("test.rule");
     expect(finding.file).toBe("a.ts");
@@ -161,7 +168,7 @@ describe("the mechanical runner", () => {
    * Regression. A pattern starting with \s{4,} could begin matching on the
    * blank line above, reporting the wrong line and an empty excerpt.
    */
-  it("reports the line the match is actually on, not a blank line above it", () => {
+  it("reports the line the match is actually on, not a blank line above it", async () => {
     write("a.ts", "describe(() => {\n  it(() => {\n\n    if (x) {\n    }\n  });\n});\n");
 
     const indented = rule({
@@ -171,13 +178,13 @@ describe("the mechanical runner", () => {
         flags: "m",
       },
     });
-    const [finding] = runMechanical(dir, ["a.ts"], [indented]);
+    const [finding] = await patterns(dir, ["a.ts"], [indented]);
 
     expect(finding.line).toBe(4);
     expect(finding.excerpt).toContain("if (x)");
   });
 
-  it("stays silent when the file also contains the exempting pattern", () => {
+  it("stays silent when the file also contains the exempting pattern", async () => {
     write("a.ts", "const bad = forbidden();\nconst safe = validate(bad);\n");
 
     const conditional = rule({
@@ -188,7 +195,7 @@ describe("the mechanical runner", () => {
       },
     });
 
-    expect(runMechanical(dir, ["a.ts"], [conditional])).toEqual([]);
+    expect(await patterns(dir, ["a.ts"], [conditional])).toEqual([]);
   });
 
   /**
@@ -196,7 +203,7 @@ describe("the mechanical runner", () => {
    * fast hash is right for a cache key and wrong for a password, and the file
    * is the only context a pattern rule has to tell them apart.
    */
-  it("stays silent when the required companion pattern is absent", () => {
+  it("stays silent when the required companion pattern is absent", async () => {
     write("a.ts", "const key = forbidden();\n");
 
     const conditional = rule({
@@ -207,10 +214,10 @@ describe("the mechanical runner", () => {
       },
     });
 
-    expect(runMechanical(dir, ["a.ts"], [conditional])).toEqual([]);
+    expect(await patterns(dir, ["a.ts"], [conditional])).toEqual([]);
   });
 
-  it("fires when the required companion pattern is present", () => {
+  it("fires when the required companion pattern is present", async () => {
     write("a.ts", "const password = input;\nconst key = forbidden();\n");
 
     const conditional = rule({
@@ -221,10 +228,10 @@ describe("the mechanical runner", () => {
       },
     });
 
-    expect(runMechanical(dir, ["a.ts"], [conditional])).toHaveLength(1);
+    expect(await patterns(dir, ["a.ts"], [conditional])).toHaveLength(1);
   });
 
-  it("still fires when the exempting pattern is absent", () => {
+  it("still fires when the exempting pattern is absent", async () => {
     write("a.ts", "const bad = forbidden();\n");
 
     const conditional = rule({
@@ -235,19 +242,19 @@ describe("the mechanical runner", () => {
       },
     });
 
-    expect(runMechanical(dir, ["a.ts"], [conditional])).toHaveLength(1);
+    expect(await patterns(dir, ["a.ts"], [conditional])).toHaveLength(1);
   });
 
-  it("reports a rule once per file however many times it matches", () => {
+  it("reports a rule once per file however many times it matches", async () => {
     write("a.ts", "forbidden();\nforbidden();\nforbidden();\n");
 
-    expect(runMechanical(dir, ["a.ts"], [rule()])).toHaveLength(1);
+    expect(await patterns(dir, ["a.ts"], [rule()])).toHaveLength(1);
   });
 
-  it("skips a file no active rule applies to", () => {
+  it("skips a file no active rule applies to", async () => {
     write("main.tf", "forbidden\n");
 
-    expect(runMechanical(dir, ["main.tf"], [rule()])).toEqual([]);
+    expect(await patterns(dir, ["main.tf"], [rule()])).toEqual([]);
   });
 });
 
@@ -256,21 +263,59 @@ describe("the mechanical runner", () => {
  * gets the entire check disabled instead.
  */
 describe("the qa-ignore escape hatch", () => {
-  it("suppresses the named rule on the same line", () => {
+  it("suppresses the named rule on the same line", async () => {
     write("a.ts", "const bad = forbidden(); // qa-ignore: test.rule - deliberate\n");
 
-    expect(runMechanical(dir, ["a.ts"], [rule()])).toEqual([]);
+    expect(await patterns(dir, ["a.ts"], [rule()])).toEqual([]);
   });
 
-  it("suppresses the named rule when the comment is on the line above", () => {
+  it("suppresses the named rule when the comment is on the line above", async () => {
     write("a.ts", "// qa-ignore: test.rule - deliberate\nconst bad = forbidden();\n");
 
-    expect(runMechanical(dir, ["a.ts"], [rule()])).toEqual([]);
+    expect(await patterns(dir, ["a.ts"], [rule()])).toEqual([]);
   });
 
-  it("does not suppress a different rule that happens to match the same line", () => {
+  it("does not suppress a different rule that happens to match the same line", async () => {
     write("a.ts", "const bad = forbidden(); // qa-ignore: some.other.rule\n");
 
-    expect(runMechanical(dir, ["a.ts"], [rule()])).toHaveLength(1);
+    expect(await patterns(dir, ["a.ts"], [rule()])).toHaveLength(1);
   });
+});
+
+/**
+ * The testing patterns are kept as regexes because no engine covers them, so
+ * they carry the whole burden of telling a branch from `??`, `?.` and an
+ * optional parameter, and an assertion loop from a setup loop. Each case is
+ * one that a plausible version of the pattern got wrong.
+ *
+ * The cases live in JSON because these patterns match code inside string
+ * literals too, so a table of them written here tripped the very rules it
+ * tests.
+ */
+describe("the bundled test-shape patterns", () => {
+  const testing = loadRules([], ["testing"]);
+  const cases = JSON.parse(
+    readFileSync(join(__dirname, "test-shape-cases.json"), "utf8"),
+  ) as Record<string, { name: string; text: string; matches: number }[]>;
+
+  const matches = (id: string, text: string): number => {
+    const e = testing.find((r) => r.id === id)!.enforcement as { pattern: string; flags?: string };
+    return [...text.matchAll(new RegExp(e.pattern, `${e.flags ?? ""}g`))].length;
+  };
+
+  const table = (id: string) => cases[id].map((c) => [c.name, c.text, c.matches] as const);
+
+  it.each(table("test.no-conditional-logic"))(
+    "test.no-conditional-logic on %s",
+    (_name, text, want) => {
+      expect(matches("test.no-conditional-logic", text)).toBe(want);
+    },
+  );
+
+  it.each(table("test.no-assertion-in-loop"))(
+    "test.no-assertion-in-loop on %s",
+    (_name, text, want) => {
+      expect(matches("test.no-assertion-in-loop", text)).toBe(want);
+    },
+  );
 });

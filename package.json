@@ -13,6 +13,7 @@
   "files": [
     "dist",
     "rules",
+    "config",
     "README.md",
     "ROADMAP.md"
   ],
@@ -24,10 +25,14 @@
     "qa": "node dist/cli.js"
   },
   "dependencies": {
+    "@vitest/eslint-plugin": "^1.6.27",
+    "eslint": "^10.10.0",
+    "eslint-plugin-sonarjs": "^4.2.1",
     "picocolors": "^1",
     "picomatch": "^4.0.7",
     "tinyglobby": "^0.2",
     "typescript": "^5",
+    "typescript-eslint": "^8.70.0",
     "yaml": "^2"
   },
   "devDependencies": {

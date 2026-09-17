@@ -510,12 +510,13 @@ machine end to end before enumerating anything.
 ## Status
 
 **Read this first if you are new here.** The decisions above record what has been
-*settled*, which is not the same as what has been *built*. In particular, none of
-the delegation turn is implemented: today the mechanical tier is still the
-hand-written pattern tier described below, all 22 rules are still regexes, no
-adapter exists, and `mutate` is still the hand-rolled version rather than
-Stryker. The engines are chosen and the design is agreed; the code has not moved
-yet. Everything in this section, by contrast, runs.
+*settled*, which is not the same as what has been *built*. The delegation turn is
+partly implemented: the adapter seam, the corpus/gauntlet split and the coverage
+check exist, with **eslint as the only adapter**. Two corpus rules are delegated
+to it (`sec.jwt.no-none-algorithm`, `test.no-conditional-assertion`); every other
+mechanical rule is still a regex, some of them on purpose (see Phase 2).
+dependency-cruiser, gitleaks and semgrep are not wired in, and `mutate` is still
+the hand-rolled version rather than Stryker. Everything in this section runs.
 
 **Done and verified.**
 
@@ -558,6 +559,19 @@ yet. Everything in this section, by contrast, runs.
   existing file. Verified end to end: in a scratch repo, `init --git-hook`
   followed by `git commit` of a file storing a token in `localStorage` is
   refused by the hook.
+- The first engine adapter (Phase 0, eslint half). A rule can declare
+  `enforcement: { kind: external, tool, rule }`; `runMechanical` is a conductor
+  over `src/rules/adapters/`, with eslint running typescript-eslint,
+  eslint-plugin-sonarjs and @vitest/eslint-plugin on recommended presets from a
+  config shipped in `config/`. Claimed findings take the corpus rule's id and
+  severity; everything else is a gauntlet warning named `eslint:<rule>` that
+  never blocks, never counts against a clean control, and never reaches Stop.
+  `qa-ignore` filters both through `src/rules/ignore.ts`. A tool that cannot run
+  fails open locally with the rules it left unenforced, and closed under `CI`.
+  The coverage check runs at runtime on the files being checked and as a unit
+  test over the fixtures, and both were shown to fail by switching the claimed
+  rule off. `fixtures/rules` scores 17/17 with no false positives. Whole
+  repo in about 1.4s here; `orders-admin` is clean, with no notes.
 - The turn-boundary call site (`agentic-qa stop`): a `Stop` hook that checks
   everything the turn changed, blocks the agent from finishing while findings
   stand, and blocks at most once per turn. Mechanical first, with the judgment
@@ -570,41 +584,34 @@ yet. Everything in this section, by contrast, runs.
 
 ## Next
 
-### 1. Phase 0: the first adapters, and the coverage test
+### 1. Phase 0: the remaining adapters
 
-The highest-value day of work in the plan. Add an `external` enforcement kind so
-a rule can name a tool and a rule id, and an adapter layer
-(`src/rules/adapters/*.ts`) where each tool returns the existing `Finding[]`.
-`runMechanical` becomes a conductor.
+The seam, the coverage check, the qa-ignore decision and the fail-open/closed
+split are built, with eslint (see Status). What is left is the second and third
+adapters: **dependency-cruiser**, which takes over
+`be.layer.no-db-client-outside-repository`, and **gitleaks**, which takes over
+`sec.no-aws-access-key-id`. gitleaks is a Go binary rather than an npm package,
+so it is the first adapter that can genuinely be missing, and the first real
+exercise of failing open locally and closed in CI. Its `isLive` has no config
+to read unless we ship a `gitleaks.toml`; decide that before claiming a rule.
 
-Start with the tools that need no network and no account: **eslint** with
-typescript-eslint, eslint-plugin-sonarjs and eslint-plugin-vitest, then
-**gitleaks** and **dependency-cruiser**.
+Decided while building the eslint half, and worth not relitigating:
 
-Then the coverage test: for every corpus rule with `kind: external`, assert the
-named rule is actually enabled in that tool's config. This is what stops the
-corpus becoming decoration.
-
-**Settle `qa-ignore` across engines before writing the second adapter.** Every
-engine brings its own suppression syntax — `eslint-disable-next-line`,
-`nosemgrep`, `gitleaks:allow` — and the invariant is that one repo has one
-escape hatch with one recorded reason. The answer that keeps it: adapters return
-findings and `src/rules/ignore.ts` filters them exactly as it does today, so
-`qa-ignore: <rule-id>` keeps working uniformly and nobody has to learn four
-dialects. An engine's native suppression still works, but it is not our
-mechanism and it is not what the audit counts.
-
-Two other things this phase must decide, both affecting the report rather than
-the engine: a missing tool fails **open** locally with a warning that names the
-rules left unenforced, and fails **closed** in CI, where a missing scanner is a
-repo problem rather than somebody's laptop. The coverage test is the other half —
-it fails hard wherever it runs, because a tool that is installed but no longer
-enforcing a promised rule is exactly the silent failure this design exists to
-prevent.
-
-Everything this preserves is deliberate: one CLI and four call sites, routing,
-`qa-ignore` in one place, one report format, the ladder. The only thing deleted
-is the weakest code in the project.
+- **The eslint config ships with the tool** (`config/eslint.config.js`), for the
+  same reason the corpus does, and plugins resolve from this package's own
+  dependencies. A repo's own eslint config is not read. Whether a repo may
+  extend the shipped one is open, and belongs with the baseline ratchet.
+- **A claimed rule in a path the corpus rule excludes is a gauntlet warning**,
+  not dropped: the exclusion means the promise does not apply there, not that
+  the tool is wrong.
+- **Stop sees corpus findings only.** The per-edit hook shows gauntlet notes,
+  capped at ten, for the file just edited.
+- **Not type-aware yet.** typescript-eslint's type-checked presets need a
+  tsconfig the checked repo may not have, and a program build per run.
+- **Gauntlet noise is already measurable.** On this repo: 31 notes, including a
+  real unused import, and `sonarjs/no-os-command-from-path` on every
+  `execFileSync("git")`, which is noise here. The answer is the ratchet (item 5)
+  and trimming the preset deliberately, not filtering output to the corpus.
 
 ### 2. Phase 1: semgrep OSS
 
@@ -624,6 +631,35 @@ a rule whose fixture an engine does not happen to catch is not necessarily worth
 keeping — the question is whether anyone would have written that rule on
 purpose. The fixtures stay either way, as the harness that proves an adapter
 reports correctly.
+
+Parity findings already in hand from the eslint half. The lesson in both: an
+engine rule with the right name is not evidence of the same coverage. Read what
+it actually matches before retiring a pattern.
+
+- **Sonar's security rules do not know Hono.** `cookie-no-httponly`, `cors` and
+  `hashing` follow data into known sinks (`express`, `cors()`,
+  `cookie-session`). On an Express app they fire, as "make sure this is safe"
+  hotspots; on the same code written against `hono/cors` and `hono/cookie` —
+  the target stack — they fire on nothing. They also treat `sha256` on a
+  password as fine, and missed `res.cookie(..., { httpOnly: false })`. Our
+  patterns caught every case in both. They stay; semgrep is the next candidate.
+- **`vitest/no-conditional-in-test` covers far less than its name.** It reports
+  only an `if` that is a direct child of the test callback: no nested `if`, no
+  `switch`, no ternary. The first attempt delegated `test.no-conditional-logic`
+  to it and quietly lost all three. The rule was split by hazard instead:
+  - `test.no-conditional-assertion` (error) — delegated to
+    `vitest/no-conditional-expect`, which follows an assertion into an `if`,
+    ternary, `switch` or `catch` at any depth. An assertion that may not run is
+    a test that can pass vacuously.
+  - `test.no-conditional-logic` (warn) — kept as a pattern, extended to `switch`
+    and ternaries. Branching in a test is a smell even when every assertion
+    runs; a ternary computing the expected value re-implements the code.
+  - `test.no-assertion-in-loop` (warn) — a new pattern. A loop is fine; a loop
+    *around an assertion* passes when it iterates zero times. The old regex
+    flagged every loop, setup loops included.
+- **Patterns match code inside strings.** The unit-test table for those two
+  patterns tripped them, so the cases live in `test/test-shape-cases.json`. The
+  loop rule then correctly caught the test iterating over its own tables.
 
 Terraform follows the same path: tflint and checkov, never hand-written regex.
 

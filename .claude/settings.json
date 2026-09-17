@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node dist/cli.js hook",
+            "command": "node \"$CLAUDE_PROJECT_DIR/dist/cli.js\" hook",
             "timeout": 30,
             "statusMessage": "agentic-qa: checking rules"
           }
@@ -18,9 +18,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node dist/cli.js stop --mechanical",
+            "command": "node \"$CLAUDE_PROJECT_DIR/dist/cli.js\" stop --mechanical",
             "timeout": 300,
-            "statusMessage": "agentic-qa: checking the turn"
+            "statusMessage": "agentic-qa: mechanical rules (judgment tiers off here)"
           }
         ]
       }

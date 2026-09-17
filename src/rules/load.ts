@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { parse } from "yaml";
 import type { Rule, RulePack } from "./types.js";
+import { KNOWN_TOOLS } from "./adapters/index.js";
 
 /**
  * Rules ship with the tool, not with the repo being checked. A repo that keeps
@@ -64,12 +65,26 @@ function validate(raw: any, file: string, index: number, pack: string): Rule {
         );
       }
     }
+  } else if (kind === "external") {
+    if (raw.tier !== "mechanical") {
+      fail(file, index, `${raw.id}: external enforcement belongs to the mechanical tier`);
+    }
+    if (!KNOWN_TOOLS.includes(raw.enforcement.tool)) {
+      fail(
+        file,
+        index,
+        `${raw.id}: unknown tool '${raw.enforcement.tool}', expected one of ${KNOWN_TOOLS.join(", ")}`,
+      );
+    }
+    if (!raw.enforcement.rule) {
+      fail(file, index, `${raw.id}: external enforcement needs the tool's rule id`);
+    }
   } else if (kind === "llm") {
     if (!raw.enforcement.prompt) {
       fail(file, index, `${raw.id}: llm enforcement needs a prompt`);
     }
   } else if (kind !== "human") {
-    fail(file, index, `${raw.id}: enforcement.kind must be pattern, llm or human`);
+    fail(file, index, `${raw.id}: enforcement.kind must be pattern, external, llm or human`);
   }
 
   return { ...raw, pack } as Rule;
@@ -107,6 +122,19 @@ export function loadRules(extraDirs: string[] = [], packs: string[] = []): Rule[
       throw new Error(`duplicate rule id: ${rule.id}`);
     }
     seen.add(rule.id);
+  }
+
+  // Two corpus rules claiming the same tool rule would make which one a
+  // finding belongs to depend on load order.
+  const claimed = new Map<string, string>();
+  for (const rule of all) {
+    if (rule.enforcement.kind !== "external") continue;
+    const key = `${rule.enforcement.tool}:${rule.enforcement.rule}`;
+    const other = claimed.get(key);
+    if (other) {
+      throw new Error(`${rule.id} and ${other} both claim ${key}`);
+    }
+    claimed.set(key, rule.id);
   }
 
   return packs.length ? all.filter((r) => packs.includes(r.pack)) : all;

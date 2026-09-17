@@ -7,7 +7,12 @@
  * Without a way to switch off one rule with a recorded reason, the first false
  * positive gets the whole check disabled instead of the single rule.
  */
-const IGNORE = /qa-ignore:\s*([A-Za-z0-9._-]+)/;
+/**
+ * Also matches gauntlet ids such as `eslint:@typescript-eslint/no-explicit-any`,
+ * so a tool's warning is silenced the same way as a corpus rule. Every engine
+ * has its own suppression dialect; this is the one the repo has to learn.
+ */
+const IGNORE = /qa-ignore:\s*([A-Za-z0-9._:@/-]*[A-Za-z0-9_@/])/;
 
 function namesRule(line: string | undefined, ruleId: string): boolean {
   const match = line?.match(IGNORE);

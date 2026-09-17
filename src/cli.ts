@@ -86,17 +86,23 @@ async function main(): Promise<number> {
     return runEval(cwd, values.expected ?? "expected.json") ? 0 : 1;
   }
 
+  // Claude Code runs hooks in the session's current directory, which drifts
+  // whenever the agent cd's into a subdirectory. The checks are keyed on the
+  // repo root (config, globs, git's root-relative paths), so the hooks anchor
+  // there rather than wherever the shell happened to be left.
+  const hookCwd = process.env.CLAUDE_PROJECT_DIR || cwd;
+
   // Always succeeds: it reports to the agent, it does not gate anything.
   if (command === "hook") {
     const { filePath } = await readHookPayload();
-    return runHook(cwd, filePath);
+    return runHook(hookCwd, filePath);
   }
 
   // Also always exits zero: it blocks through the decision field, not the exit
   // code, so a crash here can never trap a turn.
   if (command === "stop") {
     const { stopHookActive } = await readHookPayload();
-    return runStop(cwd, {
+    return runStop(hookCwd, {
       stopHookActive: stopHookActive ?? false,
       judgment: !values.mechanical,
     });
@@ -196,7 +202,18 @@ async function main(): Promise<number> {
       values.staged ? stagedFiles(cwd) : undefined,
     );
 
-    const findings = runMechanical(cwd, files, rules);
+    const mechanical = await runMechanical(cwd, files, rules);
+    const findings = mechanical.findings;
+
+    // Failing open locally is only acceptable if it is loud.
+    for (const u of mechanical.unenforced) {
+      process.stderr.write(
+        pc.yellow(`${u.tool} did not run: ${u.reason}\n`) +
+          (u.rules.length
+            ? pc.yellow(`  left unenforced: ${u.rules.join(", ")}\n`)
+            : ""),
+      );
+    }
 
     // Opt-in: the llm tier costs money, so it never runs in a pre-commit hook.
     if (values.llm) {
@@ -216,29 +233,43 @@ async function main(): Promise<number> {
       );
     }
 
+    const corpus = findings.filter((f) => f.origin === "corpus");
+    const gauntlet = findings.filter((f) => f.origin === "gauntlet");
+
+    // Scored against the corpus only. A clean control promises that no corpus
+    // rule fires on it; nothing ever promised the gauntlet would stay quiet.
     if (values.expected) {
-      return evaluateRules(cwd, values.expected, findings) ? 0 : 1;
+      return evaluateRules(cwd, values.expected, corpus) ? 0 : 1;
     }
 
     if (values.json) {
       process.stdout.write(JSON.stringify(findings, null, 2) + "\n");
     } else {
-      for (const f of findings) {
+      for (const f of corpus) {
         const tag = f.severity === "error" ? pc.red("ERROR") : pc.yellow("WARN ");
         process.stdout.write(`${tag} ${pc.bold(f.file)}:${f.line}\n`);
         process.stdout.write(`  ${f.statement} ${pc.dim(`[${f.ruleId}]`)}\n`);
         process.stdout.write(`  ${pc.dim(f.excerpt)}\n\n`);
       }
-      const errors = findings.filter((f) => f.severity === "error").length;
+      // One line each: the gauntlet is there to be seen, not to dominate.
+      for (const f of gauntlet) {
+        process.stdout.write(
+          `${pc.dim("note ")} ${f.file}:${f.line} ${f.statement} ${pc.dim(`[${f.ruleId}]`)}\n`,
+        );
+      }
+      if (gauntlet.length) process.stdout.write("\n");
+
+      const errors = corpus.filter((f) => f.severity === "error").length;
       process.stdout.write(
         pc.dim(
           `${rules.length} rules · ${files.length} files · ` +
-            `${errors} error(s), ${findings.length - errors} warning(s)\n`,
+            `${errors} error(s), ${corpus.length - errors} warning(s) · ` +
+            `${gauntlet.length} gauntlet note(s), not blocking\n`,
         ),
       );
     }
 
-    return findings.some((f) => f.severity === "error") ? 1 : 0;
+    return corpus.some((f) => f.severity === "error") ? 1 : 0;
   }
 
   if (command === "mutate") {

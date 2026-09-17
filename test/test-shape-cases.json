@@ -1,0 +1,112 @@
+{
+  "note": "Cases for the bundled test-shape patterns, kept out of a .ts file on purpose: the patterns match code inside string literals, so a table of them in a test file trips the rules it tests.",
+  "test.no-conditional-logic": [
+    {
+      "name": "an if",
+      "text": "    if (x) {",
+      "matches": 1
+    },
+    {
+      "name": "a nested if",
+      "text": "      if (x) {",
+      "matches": 1
+    },
+    {
+      "name": "a switch",
+      "text": "    switch (k) {",
+      "matches": 1
+    },
+    {
+      "name": "a ternary",
+      "text": "    const want = big ? 3 : 1;",
+      "matches": 1
+    },
+    {
+      "name": "a ternary inside an assertion",
+      "text": "    expect(a).toBe(big ? 3 : 1);",
+      "matches": 1
+    },
+    {
+      "name": "a ternary a formatter broke across lines",
+      "text": "    const w =\n      big\n      ? 3\n      : 1;",
+      "matches": 1
+    },
+    {
+      "name": "a ternary on an optional chain",
+      "text": "    const a = b?.c ? 1 : 2;",
+      "matches": 1
+    },
+    {
+      "name": "nullish coalescing",
+      "text": "    const a = b ?? c;",
+      "matches": 0
+    },
+    {
+      "name": "an optional chain",
+      "text": "    const a = b?.c;",
+      "matches": 0
+    },
+    {
+      "name": "an optional parameter",
+      "text": "    function f(a?: string, b: number) {}",
+      "matches": 0
+    },
+    {
+      "name": "a comment that reads like a ternary",
+      "text": "    // is it ? yes : no",
+      "matches": 0
+    },
+    {
+      "name": "an if in a module-level helper",
+      "text": "  if (ci === undefined) delete process.env.CI;",
+      "matches": 0
+    }
+  ],
+  "test.no-assertion-in-loop": [
+    {
+      "name": "an assertion in a for loop",
+      "text": "    for (const r of rows) {\n      expect(r).toBe(1);\n    }",
+      "matches": 1
+    },
+    {
+      "name": "an assertion after a nested block in a loop",
+      "text": "    for (const r of rows) {\n      if (r) {\n        log(r);\n      }\n      expect(r).toBe(1);\n    }",
+      "matches": 1
+    },
+    {
+      "name": "an assertion in a brace-less loop",
+      "text": "    for (const r of rows) expect(r).toBe(1);",
+      "matches": 1
+    },
+    {
+      "name": "an assertion in a forEach",
+      "text": "    rows.forEach((r) => {\n      expect(r).toBe(1);\n    });",
+      "matches": 1
+    },
+    {
+      "name": "an assertion in a while loop",
+      "text": "    while (next()) {\n      expect(cur).toBeTruthy();\n    }",
+      "matches": 1
+    },
+    {
+      "name": "a setup loop followed by an assertion",
+      "text": "    for (const r of rows) {\n      out.push(r);\n    }\n    expect(out).toHaveLength(2);",
+      "matches": 0
+    },
+    {
+      "name": "a brace-less setup loop followed by an assertion",
+      "text": "    for (let i = 0; i < 3; i++) out.push(i);\n    expect(out).toHaveLength(3);",
+      "matches": 0
+    },
+    {
+      "name": "a setup forEach followed by an assertion",
+      "text": "    rows.forEach((r) => {\n      out.push(r);\n    });\n    expect(out).toEqual(rows);",
+      "matches": 0
+    },
+    {
+      "name": "a setup loop with a nested block, then an assertion",
+      "text": "    for (const r of rows) {\n      if (r) {\n        out.push(r);\n      }\n    }\n    expect(out).toHaveLength(1);",
+      "matches": 0
+    }
+  ]
+}

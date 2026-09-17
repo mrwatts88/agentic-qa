@@ -59,7 +59,11 @@ export async function runStop(cwd: string, options: StopOptions): Promise<number
 
     const findings: string[] = [];
 
-    const mechanical = runMechanical(cwd, files, rules);
+    // Only what the corpus promised. The gauntlet reports and never gates, and
+    // the per-edit hook has already shown it to the agent file by file.
+    const mechanical = (await runMechanical(cwd, files, rules)).findings.filter(
+      (f) => f.origin === "corpus",
+    );
     for (const f of mechanical) {
       findings.push(`- ${f.file}:${f.line} ${f.statement} [${f.ruleId}]`);
     }

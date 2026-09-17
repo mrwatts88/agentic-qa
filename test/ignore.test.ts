@@ -67,3 +67,16 @@ describe("isIgnoredInFile", () => {
     expect(isIgnoredInFile("export const app = 1;\n", RULE)).toBe(false);
   });
 });
+
+describe("tool-qualified ids", () => {
+  it("matches a scoped eslint rule id in full", () => {
+    const lines = ["x; // qa-ignore: eslint:@typescript-eslint/no-explicit-any - generated"];
+
+    expect(isIgnoredAtLine(lines, 0, "eslint:@typescript-eslint/no-explicit-any")).toBe(true);
+    expect(isIgnoredAtLine(lines, 0, "eslint:@typescript-eslint/no-explicit")).toBe(false);
+  });
+
+  it("does not swallow trailing punctuation into the id", () => {
+    expect(isIgnoredAtLine(["x; // qa-ignore: test.rule."], 0, "test.rule")).toBe(true);
+  });
+});

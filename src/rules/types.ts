@@ -38,6 +38,20 @@ export interface PatternEnforcement {
   requireFilePattern?: string;
 }
 
+/**
+ * Delegated to a real engine. The rule names a tool and that tool's own rule
+ * id; the tool finds the problem, and the corpus entry is what makes a finding
+ * from that rule block instead of warn. It is also a promise: the conductor
+ * refuses to run if the named rule is not live in the config the tool runs
+ * with, so dropping a plugin fails loudly rather than quietly unenforcing it.
+ */
+export interface ExternalEnforcement {
+  kind: "external";
+  tool: string;
+  /** The tool's own rule id, exactly as the tool reports it. */
+  rule: string;
+}
+
 export interface LlmEnforcement {
   kind: "llm";
   /** The question put to the judge about the changed code. */
@@ -50,6 +64,7 @@ export interface HumanEnforcement {
 
 export type Enforcement =
   | PatternEnforcement
+  | ExternalEnforcement
   | LlmEnforcement
   | HumanEnforcement;
 
@@ -75,7 +90,18 @@ export interface RulePack {
 }
 
 export interface Finding {
+  /**
+   * A corpus rule id, or `<tool>:<rule>` for a gauntlet finding: something an
+   * engine reported that no corpus rule promises to enforce.
+   */
   ruleId: string;
+  /**
+   * `corpus` findings are the ones the corpus promised to enforce, and carry
+   * that rule's severity. `gauntlet` findings are everything else a tool
+   * reported: always a warning, never a gate, and never a false positive
+   * against a clean control, because nothing promised they would stay quiet.
+   */
+  origin: "corpus" | "gauntlet";
   statement: string;
   severity: "error" | "warn";
   file: string;

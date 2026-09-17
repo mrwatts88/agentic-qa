@@ -51,7 +51,13 @@ grounding needs.
 - `src/rules/select.ts` — which files are worth checking: globbed from the rules'
   own triggers, minus the ignore list, intersected with any scope a caller
   supplies. Intersection, never substitution.
-- `src/rules/mechanical.ts` — runs the pattern tier.
+- `src/rules/mechanical.ts` — the mechanical conductor: runs patterns and every
+  adapter, maps tool findings to corpus rules or the gauntlet, applies qa-ignore,
+  and refuses to run when a claimed tool rule is switched off.
+- `src/rules/adapters/*.ts` — one per engine. Runs the tool and returns what it
+  said in the tool's own rule ids; knows nothing about the corpus.
+- `config/eslint.config.js` — the eslint config the tool ships and runs with.
+  Trimming a preset here can break a corpus claim; the coverage test says which.
 - `src/rules/llm.ts` — runs the judgment tier, with its own cached ledger.
 - `src/rules/ignore.ts` — the qa-ignore escape hatch, shared by both tiers.
 - `src/rules/evaluate.ts` — scores both rule tiers against a known-answer file.
@@ -157,6 +163,16 @@ grounding needs.
   `.qa/contracts.json`, and a lost write there is a verdict silently discarded
   from a committed file, so they belong only in `Stop` — which fires once, for
   the main agent, at the end of a turn.
+- **Hooks anchor to `CLAUDE_PROJECT_DIR`, not the process cwd.** Claude Code
+  runs hooks in the session's current directory, which moves whenever the agent
+  `cd`s. This repo's own Stop hook once failed with "cannot find module
+  fixtures/rules/dist/cli.js" because a shell was left in a fixture directory.
+  Config, globs and git's root-relative paths all assume the repo root.
+- **An engine rule with the right name is not the same coverage.** Before
+  delegating a pattern, read what the engine rule matches. The vitest rule named
+  "no conditional in test" sees only a top-level `if`, and Sonar's cookie and
+  CORS rules see Express but not Hono. A pattern that covers the target stack
+  better stays a pattern.
 - **Stdin parsing stays at the CLI boundary.** `runHook` and `runStop` are pure
   functions of cwd and options so their tests never wait on a pipe that may not
   close.
