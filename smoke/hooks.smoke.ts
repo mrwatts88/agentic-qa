@@ -15,7 +15,7 @@ import { runInit } from "../src/init";
  * repos wired to this checkout's `dist/`, and assert on the session transcript:
  * whether the turn was held, what the agent was told, what the person saw.
  *
- * Run with `npm run smoke`: four sessions in parallel, about a minute, using
+ * Run with `npm run smoke`: five sessions in parallel, about a minute, using
  * whatever login `claude` already has. Not part of `npm test`, and not in
  * CI. Transcripts land in `.qa/tmp/smoke/`.
  *
@@ -183,6 +183,16 @@ beforeAll(() => {
     "Say hello in one word.",
     NO_TOOLS,
   );
+  sessions.steering = runSession(
+    "steering",
+    { files: {} },
+    [
+      "Were you given any rules for this repository before this message?",
+      "If so, reply with only the rule id that is about checking a caller may access a record.",
+      "Otherwise reply NONE.",
+    ].join("\n"),
+    NO_TOOLS,
+  );
   sessions.broken = runSession(
     "broken",
     {
@@ -201,6 +211,21 @@ beforeAll(() => {
   // each test awaits its own session and fails on its own.
   for (const s of Object.values(sessions)) s.catch(() => undefined);
 }, 60_000);
+
+describe("SessionStart", () => {
+  /**
+   * The guidance reaches the agent only as context, which the transcript does
+   * not show. So the agent is asked for a rule id it cannot know any other way:
+   * the repo it runs in is empty.
+   */
+  it("puts the rules in front of the agent before it writes anything", async () => {
+    const events = await sessions.steering;
+    const result = String(events.find((e) => e.type === "result")?.result ?? "");
+
+    expect(hookOutputs(events, "SessionStart").join("\n")).toContain("be.authz.ownership-check");
+    expect(result).toContain("be.authz.ownership-check");
+  });
+});
 
 describe("Stop", () => {
   it("holds the turn on a corpus error and tells the agent why", async () => {

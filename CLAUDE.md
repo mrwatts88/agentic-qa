@@ -90,6 +90,8 @@ grounding needs.
   stay serial.
 - `src/hook.ts` — what the Claude Code hooks share: payload reading, changed
   files, exception wording. The per-edit hook that lived here is removed.
+- `src/steer.ts` — the SessionStart hook: the rules in force, told to the agent
+  before it writes anything. Guidance, not a check.
 - `src/stop.ts` — the Stop hook. Checks everything the turn changed and blocks
   the agent from finishing while findings stand, at most once per turn.
 - `src/init.ts` — installs the call sites into a repo. Never overwrites.
@@ -199,6 +201,12 @@ grounding needs.
   to what `src/stop.ts` or the settings `init` writes emit, and
   add a scenario to `smoke/hooks.smoke.ts` for any new behaviour. Their inputs
   live in `fixtures/smoke/`, because they break rules on purpose.
+- **Steering is generated, never written.** The SessionStart text is built from
+  the loaded rules at the start of every session, so a corpus change reaches
+  the agent with no step to remember, and it cannot name a check that does not
+  run. It lists only rules that match some file in the repo, falling back to
+  all of them while the repo has no code; a test holds it under 4,000
+  characters, and outgrowing that means choosing what to show, not raising it.
 - **Stop runs the mechanical corpus only.** Judgment was tried there and does
   not fit a turn: on one feature's worth of changes it made about 30 model
   calls, took minutes, overran the hook timeout and was cancelled having checked

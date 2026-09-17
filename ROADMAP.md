@@ -926,6 +926,10 @@ reasoning. What landed, beyond the decision as written:
 
 ### 2. Session-start steering: tell the agent the guardrails before it writes
 
+Built: `agentic-qa session-start`, installed by `init --claude-hook`, with a
+smoke scenario proving the agent receives it. Its effect on what the agent
+writes is measured by item 4's trial.
+
 Prevention, where the review below is detection. A `SessionStart` hook, installed
 by `init --claude-hook`, puts a short form of the corpus in front of the main
 model — Opus or Fable — before it writes anything: what will be checked, and how

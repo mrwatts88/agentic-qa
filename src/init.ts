@@ -64,6 +64,19 @@ function claudeSettings(runner: string): string {
     JSON.stringify(
       {
         hooks: {
+          // No matcher, so the guardrails arrive on startup, resume, clear and
+          // after compaction alike: each is a context that has lost them.
+          SessionStart: [
+            {
+              hooks: [
+                {
+                  type: "command",
+                  command: `${runner} session-start`,
+                  timeout: 30,
+                },
+              ],
+            },
+          ],
           // No matcher: Stop fires once when the agent finishes a turn, and
           // sees every change the turn made, however it was made.
           Stop: [

@@ -11,6 +11,7 @@ import { loadRules } from "./rules/load.js";
 import { readHookPayload } from "./hook.js";
 import { runStop } from "./stop.js";
 import { runGauntlet } from "./gauntlet.js";
+import { runSessionStart } from "./steer.js";
 import { runInit, installHooks, prepareLine, installedCallSites } from "./init.js";
 import { selectFiles } from "./rules/select.js";
 import { runMechanical } from "./rules/mechanical.js";
@@ -25,6 +26,7 @@ Usage:
   agentic-qa init [options]         write qa.config.yaml; add call sites only if asked
   agentic-qa install-hooks          point core.hooksPath at hooks/ (run from prepare)
   agentic-qa setup                  download the pinned scanners and rules now
+  agentic-qa session-start          SessionStart hook: tell the agent the rules up front
   agentic-qa stop                   Stop hook: check the whole turn, block once on findings
   agentic-qa commit                 pre-commit hook: check staged files; exits 1 on errors
   agentic-qa ci                     CI: check the whole repo, judgment tiers included
@@ -37,7 +39,7 @@ Usage:
 
 Options:
   --git-hook          (init) commit gate: tracked hooks/pre-commit + prepare script
-  --claude-hook       (init) Claude Code Stop hook in .claude/settings.json
+  --claude-hook       (init) Claude Code SessionStart and Stop hooks in .claude/settings.json
   --force             (init) replace existing hook wiring; never touches qa.config.yaml
   --all               re-judge every contract, ignoring the cached ledger
   --staged            only tests in files staged in git
@@ -102,6 +104,9 @@ async function main(): Promise<number> {
   // command, so a repo whose settings still call it does not error on every
   // edit before it re-runs `init --claude-hook --force`.
   if (command === "hook") return 0;
+
+  // Guidance, not a check: the rules in force, before the agent writes anything.
+  if (command === "session-start") return runSessionStart(hookCwd);
 
   // Also always exits zero: it blocks through the decision field, not the exit
   // code, so a crash here can never trap a turn.

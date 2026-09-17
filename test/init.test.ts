@@ -95,13 +95,14 @@ describe("init", () => {
    * Removed: nearly all it said was gauntlet noise, which taught the agent to
    * skip hook output. Stop enforces the corpus on every change instead.
    */
-  it("does not register a per-edit hook", () => {
+  it("registers the guardrails at session start and the check at Stop, and no per-edit hook", () => {
     runInit(dir, "npx agentic-qa", BOTH);
     const settings = JSON.parse(
       readFileSync(join(dir, ".claude/settings.json"), "utf8"),
     );
 
-    expect(Object.keys(settings.hooks)).toEqual(["Stop"]);
+    expect(Object.keys(settings.hooks)).toEqual(["SessionStart", "Stop"]);
+    expect(settings.hooks.SessionStart[0].hooks[0].command).toBe("npx agentic-qa session-start");
   });
 
   /**

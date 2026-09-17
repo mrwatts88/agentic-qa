@@ -22,7 +22,7 @@ call site is a flag:
 | flag | installs |
 | --- | --- |
 | `--git-hook` | a tracked `hooks/pre-commit`, plus the `prepare` script that activates it |
-| `--claude-hook` | a `Stop` hook in `.claude/settings.json` |
+| `--claude-hook` | `SessionStart` and `Stop` hooks in `.claude/settings.json` |
 
 Already set up by an older version? `init --force` replaces the hook wiring so
 you pick up call sites added or removed since — including the per-edit hook,
@@ -50,6 +50,15 @@ agentic-qa eval         # score the checker itself
 staged. `rules` takes `--llm` to add the rules that need a model's judgment.
 `rules` and `contracts` take `--json`. Everything exits non-zero on a problem,
 so it works as a gate.
+
+## Before the agent writes anything
+
+With `--claude-hook`, every Claude Code session starts with a short list of the
+rules: which are checked when a turn ends, which are left to review, and how an
+exception works. It is built from the rules at the start of each session, so it
+always matches what is enforced, and lists only rules that apply to files in
+your repo. A repo with no code yet gets them all. See it with
+`npx agentic-qa session-start`.
 
 ## Two things it checks
 
