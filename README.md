@@ -82,20 +82,41 @@ what it did not install. Either way it never overwrites a file that exists.
 If you took the git hook, commit `hooks/pre-commit`. That is what makes the gate
 reach everyone who clones the repo, instead of only the person who ran `init`.
 
-Then:
+## Commands
 
-```
-agentic-qa rules        # check code against the rules      (free)
-agentic-qa gauntlet     # everything else the scanners say  (free, never blocks)
-agentic-qa contracts    # check tests against their descriptions
-agentic-qa mutate       # break the code, confirm tests notice
-agentic-qa eval         # score the checker itself
-```
+Run with `npx agentic-qa <command>`. Every check exits non-zero on a problem,
+except `gauntlet`, which never blocks.
 
-`rules`, `contracts` and `mutate` take `--staged` to check only what git has
-staged. `rules` takes `--llm` to add the rules that need a model's judgment.
-`rules` and `contracts` take `--json`. Everything exits non-zero on a problem,
-so it works as a gate.
+**Setup**
+
+| command | what it does |
+| --- | --- |
+| `init` | Writes `qa.config.yaml`. Adds call sites only when asked: `--git-hook`, `--claude-hook`. `--force` replaces hook wiring it wrote before; `--runner <cmd>` changes how hooks invoke the tool. |
+| `setup` | Downloads the pinned scanners and rules now instead of on first use. For CI and new machines. |
+| `install-hooks` | Points git at the tracked `hooks/` directory. Run by the `prepare` script on `npm install`; you do not run it. |
+
+**Call sites.** Hooks and CI run these for you; run one by hand to see what it would do.
+
+| command | runs from | what it does |
+| --- | --- | --- |
+| `session-start` | Claude Code, session start | Prints the guide index the agent starts with. |
+| `stop` | Claude Code, end of each turn | Free checks on what the turn changed. Blocks the agent once on a broken rule. |
+| `commit` | git pre-commit hook | Free checks on staged files. Refuses the commit on an error. |
+| `ci` | your CI | Free checks on the whole repo, plus judgment rules and test contracts when a key is available. |
+
+**Checks you run**
+
+| command | what it does | costs money |
+| --- | --- | --- |
+| `rules` | Checks code against the corpus rules. `--staged` for staged files only, `--json` for machine output. | no |
+| `rules --llm` | Adds the rules that need a model's judgment. `--all` ignores cached verdicts. | yes |
+| `gauntlet [paths]` | Every scanner rule the corpus does not claim, grouped by rule. Never blocks. `--json` lists all. | no |
+| `contracts` | Judges whether each test asserts what its description claims. `--staged`, `--file <path>`, `--all`, `--json`. | yes |
+| `mutate` | Breaks the implementation the way each description says and checks the test fails. `--staged`, `--all`. | yes |
+| `eval` | Judges, then scores the contract judge against a known-answer file (`--expected`). For working on this tool. | yes |
+
+Commands that call a model take `--model` and `--concurrency`. Nothing re-judges
+code, descriptions or prompts that have not changed since the last run.
 
 ## Before the agent writes anything
 

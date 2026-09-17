@@ -1030,8 +1030,8 @@ what the review finds, whether steering prevented it, what the agent does with
 findings, and how long and how much the review takes.
 
 
-Each trial's output is kept on a branch in `orders-admin` (`trial/orders-api`,
-`trial/orders-api-2`) and its main is untouched; transcripts were not kept.
+Trial output was not kept: the branches were deleted so `orders-admin` stays on
+`main`, where the next trial starts from the same code. Findings are below.
 Judge timing scripts are in `fixtures/probes/judge-latency/`.
 
 **Trial 1, 2026-09-17** (prompt in `fixtures/probes/trial-orders-api/`): a

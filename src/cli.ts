@@ -20,20 +20,23 @@ import { evaluateRules, evaluateLlmRules } from "./rules/evaluate.js";
 import { runLlmRules } from "./rules/llm.js";
 import { ensureBinary, ensureSemgrepRules, GITLEAKS, OPENGREP, SEMGREP_RULES } from "./tools/provision.js";
 
-const USAGE = `agentic-qa - rule enforcement for AI-written code
+const USAGE = `agentic-qa - holds AI-written code to an engineering guide
 
-Usage:
+Setup:
   agentic-qa init [options]         write qa.config.yaml; add call sites only if asked
-  agentic-qa install-hooks          point core.hooksPath at hooks/ (run from prepare)
   agentic-qa setup                  download the pinned scanners and rules now
-  agentic-qa session-start          SessionStart hook: tell the agent the rules up front
-  agentic-qa stop                   Stop hook: check the whole turn, block once on findings
+  agentic-qa install-hooks          point core.hooksPath at hooks/ (run from prepare)
+
+Call sites (run for you by hooks and CI):
+  agentic-qa session-start          SessionStart hook: give the agent an index of the guide
+  agentic-qa stop                   Stop hook: check what the turn changed, block once on findings
   agentic-qa commit                 pre-commit hook: check staged files; exits 1 on errors
-  agentic-qa ci                     CI: check the whole repo, judgment tiers included
-  agentic-qa rules [options]        check changed code against the rules corpus
-  agentic-qa gauntlet [paths...]    every scanner rule, grouped by rule; never blocks
-  agentic-qa rules --llm            also run the rules that need a model's judgment
-  agentic-qa contracts [options]    verify tests assert what their descriptions claim
+  agentic-qa ci                     CI: check the whole repo, judgment and contracts included
+
+Checks you run:
+  agentic-qa rules [options]        check code against the corpus rules; --llm adds judgment
+  agentic-qa gauntlet [paths...]    every scanner rule the corpus does not claim; never blocks
+  agentic-qa contracts [options]    judge whether tests assert what their descriptions claim
   agentic-qa mutate [options]       break the code on purpose and check the tests notice
   agentic-qa eval [options]         judge, then score the contract judge against known verdicts
 
@@ -41,14 +44,15 @@ Options:
   --git-hook          (init) commit gate: tracked hooks/pre-commit + prepare script
   --claude-hook       (init) Claude Code SessionStart and Stop hooks in .claude/settings.json
   --force             (init) replace existing hook wiring; never touches qa.config.yaml
-  --all               re-judge every contract, ignoring the cached ledger
-  --staged            only tests in files staged in git
-  --model <name>      override judge model (haiku | sonnet | opus)
-  --concurrency N     parallel judge processes
-  --json              machine-readable output
-  --file <path>       restrict to a single file, for cheap iteration
-  --runner <cmd>      how installed hooks invoke this tool (default: npx agentic-qa)
-  --expected <path>   expectations file for eval (default: expected.json)
+  --runner <cmd>      (init) how installed hooks invoke this tool (default: npx agentic-qa)
+  --llm               (rules) also run the rules that need a model's judgment
+  --staged            (rules, contracts, mutate) only files staged in git
+  --all               (rules --llm, contracts, mutate, eval) ignore cached verdicts
+  --file <path>       (contracts) only this test file
+  --json              (rules, gauntlet, contracts) machine-readable output
+  --model <name>      (rules, contracts, mutate, eval) judge model (haiku | sonnet | opus)
+  --concurrency N     (rules, contracts, mutate) parallel judge processes
+  --expected <path>   (rules, eval) score against a known-answer file
   -h, --help
 `;
 
