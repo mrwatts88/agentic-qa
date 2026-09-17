@@ -1,0 +1,28 @@
+rules:
+  - id: cors-wildcard-origin-with-credentials
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: Wildcard CORS origin combined with credentials.
+    pattern-either:
+      - pattern: |
+          {..., origin: "*", ..., credentials: true, ...}
+      - pattern: |
+          {..., credentials: true, ..., origin: "*", ...}
+  - id: session-cookie-not-httponly
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: Cookie options switch httpOnly off.
+    pattern: |
+      {..., httpOnly: false, ...}
+  - id: password-fast-hash
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: Password hashed with a fast hash.
+    patterns:
+      - pattern: $CRYPTO.createHash($ALG).update($PW)
+      - metavariable-regex:
+          metavariable: $ALG
+          regex: (?i)^["'](md5|sha1|sha256)["']$
+      - metavariable-regex:
+          metavariable: $PW
+          regex: (?i).*(password|passwd).*

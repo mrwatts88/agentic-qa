@@ -711,6 +711,9 @@ than the payload:
   notes have arrived throughout development sessions — but nothing asserts it.
 - An uncommitted `qa-ignore` does not release a block (item 1).
 
+The probe hooks that exposed the Stop bug are in
+`fixtures/probes/stop-hook-shapes`, with the recipe.
+
 When it runs is part of the item: at minimum a documented `npm run smoke` before
 changing any hook output, and probably a CI job limited to changes under
 `src/hook.ts`, `src/stop.ts` and `src/init.ts`, when `ANTHROPIC_API_KEY` is
@@ -866,6 +869,8 @@ stack:
   "Framework-specific gauntlets" under "Raised, not yet designed".
 - **Terraform** has only opengrep today; tflint and checkov remain candidates.
 
+The probe app behind these measurements is `fixtures/probes/gauntlet-hono-express`.
+
 The rules written here are gauntlet rules, not corpus promises: they widen what
 is noticed, and only a corpus claim (item 11) makes one block.
 
@@ -879,7 +884,9 @@ worth as much as the machine that enforces it.
 Shipped in `config/` under this repository's license. On a file built to trip
 regexes, three opengrep rules got every case right where the patterns produced
 two false positives (a `sha256` checksum in a file that also hashes a password,
-and `httpOnly: false` inside a string), and matched Hono and Express alike.
+and `httpOnly: false` inside a string), and matched Hono and Express alike. The
+prototype rules and the files they were measured on are in
+`fixtures/probes/own-ast-rules`.
 
 #### Corpus claims on community rules
 
