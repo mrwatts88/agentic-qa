@@ -28,6 +28,95 @@ selling are not goals. Revisit the licensing decisions if that ever changes.
 
 These are settled. Revisit only with a reason.
 
+### Decided, not yet built: the hooks enforce the corpus, and the gauntlet is on demand
+
+Reached by dogfooding. Building the call-site table in this repo, with the hooks
+live, the per-edit hook fired on nearly every file written, and almost all of it
+was gauntlet noise the agent silently skipped. Nothing it said was wrong enough
+to act on and nothing asked it to act, so it trained the agent to stop reading
+hook output at all, which is the one habit that makes the corpus worthless too.
+The owner's framing: **the corpus is the product** — the mechanical and judgment
+rules written from `~/code/full-stack-swe`, which are about building software
+well. The gauntlet is thousands of community rules nobody has vetted for this
+stack. Mixing the two in one stream to the agent dilutes the one that matters.
+
+What each place runs, once built:
+
+| where | corpus, mechanical | corpus, judgment + contracts | gauntlet |
+| --- | --- | --- | --- |
+| per edit (`PostToolUse`) | removed | — | — |
+| end of turn (`Stop`) | yes, blocks | yes, blocks | no |
+| commit | yes, blocks | no | no |
+| CI | yes, fails | yes, fails | no |
+| `agentic-qa gauntlet`, npm script | — | — | on demand, never blocks |
+
+- **The per-edit hook goes.** Its job was fast feedback, and nearly all its
+  output was gauntlet. The corpus is enforced at Stop, which sees every change
+  however it was made. Accepted cost: `PostToolUse` was the only feedback a
+  subagent received while still running, so subagents now learn about the corpus
+  only when the main agent's Stop catches their edits. This overrules "That is
+  the argument that keeps the per-edit hook alive", below, deliberately.
+- **Nothing automatic shows the gauntlet.** Stop, commit and CI report corpus
+  findings only. The scanners still run where a corpus rule is claimed by them,
+  but unclaimed findings are dropped there. That is not the filter "The corpus
+  asserts coverage" warns against, because the gauntlet still exists, whole, in
+  its own command. Likely consequence worth taking: a call site need only run an
+  engine that enforces a corpus rule routed to the changed files, so opengrep,
+  which claims none today, would leave Stop and cut about 5s from it.
+- **The gauntlet is a working session.** `agentic-qa gauntlet` and an npm script
+  run every engine broad and never block. A person runs it with an agent — "run
+  the gauntlet, see what makes sense, fix it or ignore it" — which is where
+  a rule earns promotion into the corpus or gets switched off. Whether it should
+  also run on commit was raised and decided against by default: blocking commits
+  on unvetted rules turns every false positive into a forced `qa-ignore`.
+- **Commit runs the corpus's mechanical rules only.** Judgment on commit was
+  considered, since Stop already pays for it and commits are rarer, and rejected
+  for a concrete reason: judging writes `.qa/rules.json`, a committed file, after
+  the person has staged, so every commit would leave the ledger modified behind
+  it. Most verdicts would be cache hits from Stop anyway. Revisit only if the
+  trial shows commits landing judged-violating code that Stop never saw.
+- **CI runs both corpus tiers and fails on either.** No gauntlet.
+- **The person hears from Stop only when a block did not work.** On the first
+  pass the agent is told and nothing goes to the person. If findings still stand
+  on the second pass, the person gets them, and decides what to tell the agent.
+  A clean turn says nothing. Today scanner notes reach the person on every turn.
+- **A block must say what to fix.** Pattern and scanner findings carry the rule
+  statement, which is the fix. Judgment findings today carry only the statement
+  and a line: the judge's reason ("loads the order by id but never checks it
+  belongs to the caller") is written to the ledger and dropped from the block, so
+  the agent knows which principle it broke but not what the judge saw. The block
+  must include the judge's reason and the rule's rationale. Contract findings
+  already carry their reason.
+- **No session-start steering yet.** A `SessionStart` hook could put a short form
+  of the guardrails in front of the agent before it writes anything, shipped from
+  the package so no consuming repo's files change. Not needed while the corpus
+  blocks at Stop: the agent learns a rule the moment it breaks one, with what to
+  fix. The signal to build it is the trial showing Stop blocking on the same
+  rules again and again.
+- **Instructions to agents in consuming repos travel in hook output, never in a
+  steering file.** This repo's CLAUDE.md reaches only sessions working on this
+  repo; nobody will edit every consuming repo's CLAUDE.md.
+
+The evidence, from one session of building here. Every one of these reached the
+agent, most of them repeatedly, and none was acted on:
+
+| rule | fired on | legitimate here? |
+| --- | --- | --- |
+| `eslint:sonarjs/no-os-command-from-path` | every `execFileSync("git")`, about a dozen times | no: whoever controls PATH already controls the machine |
+| `opengrep:...detect-non-literal-regexp` | `mechanical.ts`, `load.ts`, `opengrep.ts` | no: the patterns come from our own corpus, not user input; real in a request handler |
+| `eslint:sonarjs/no-invariant-returns` | `hook.ts` always returning 0 | no: that is an invariant |
+| `opengrep:...missing-template-string-indicator` | `init.ts`, a `{test,spec}` glob | no: false positive |
+| `eslint:sonarjs/cognitive-complexity` | `cli.ts` (88), `mechanical.ts` (40), `stop.ts` (28) | yes, but pre-existing and repeated on every edit of the file |
+| `eslint:@typescript-eslint/no-explicit-any` | test stdout mocks, smoke transcript types | mildly |
+| `eslint:sonarjs/no-nested-template-literals`, `no-nested-conditional` | several | style, arguable |
+| `eslint:sonarjs/super-linear-regex` | `llm.ts` whitespace normalisation | technically, on local files only |
+| `opengrep:...github-actions-mutable-action-tag` | `actions/checkout@v4` | yes: pin actions by SHA |
+
+Two corpus findings fired in the same session, and both were right: a token in
+`localStorage` inside smoke-test data, which moved to `fixtures/`, and an
+assertion inside a loop, which became a table. The corpus earned its place; the
+gauntlet, as shown to an agent, did not.
+
 ### The enforcement ladder
 
 Every rule declares the cheapest tier that can actually enforce it:
@@ -84,7 +173,8 @@ Agent hooks, git hooks, and CI all invoke the same binary. Never fork the logic
 per call site, or the rules the agent is told about drift from the rules the
 gate enforces.
 
-- **Agent harness hooks** (`PostToolUse`, `Stop`) — the fast loop. Feedback
+- **Agent harness hooks** (`PostToolUse`, `Stop`) — the fast loop. (`PostToolUse`
+  is being removed; see "Decided, not yet built: the hooks enforce the corpus".) Feedback
   reaches the agent while it still holds the context that produced the code.
   This is where most of the leverage is: catching it at commit is far weaker,
   because the agent has moved on.
@@ -230,7 +320,9 @@ only. A subagent's edits are therefore caught at the end of the main turn, by
 the same working-tree scope that catches a change made in Bash — deferred, but
 not missed.
 
-That is the argument that keeps the per-edit hook alive. PostToolUse *does* fire
+**Overruled, not yet built:** the per-edit hook is being removed anyway, with this
+cost accepted; see "Decided, not yet built: the hooks enforce the corpus". The
+argument as it stood: PostToolUse *does* fire
 inside subagents, carrying `agent_id` and `agent_type`, so it is the only
 feedback a subagent can receive while it can still act on it. Removing it, which
 looked reasonable once `Stop` could block, would leave every subagent working
@@ -323,7 +415,7 @@ unrequested change this tool objects to. It is also a speed bump rather than a
 lock, since it matches how a command starts. Whether stronger approval is worth
 building is an open question.
 
-Two known edges, accepted for now and worth watching in real use (item 1). A
+Two known edges, accepted for now and worth watching in real use (item 2). A
 renamed file has no committed exceptions until the rename is committed. And an
 exception a person asked the agent to add is listed as refused on every turn
 until it is committed, which could read as nagging.
@@ -548,6 +640,12 @@ Full coverage immediately, curated gating from day one, and a promotion path —
 tool rule that proves itself gets a corpus entry and starts blocking. That is the
 baseline ratchet, arriving as a side effect.
 
+**Revised, not yet built:** a warning shown to an agent on every edit turned out
+not to be "visible" but ignorable, and ignorable output trains the reader to
+ignore all of it. Gauntlet findings will leave the automatic call sites entirely
+and live in an on-demand command; see "Decided, not yet built: the hooks enforce
+the corpus". The coverage half of this section stands unchanged.
+
 ### The 22 rules are a test set, not a spec
 
 They were derived from the prose in `~/code/full-stack-swe` to have something
@@ -668,7 +766,14 @@ install provisioned automatically. Four corpus rules are delegated to them
 other mechanical rule is still a pattern, some on purpose. opengrep claims no
 corpus rule yet. `mutate` is still the hand-rolled version rather than Stryker.
 
-Everything listed below runs. First in Next is using it for real on `orders-admin`.
+Everything listed below runs. First in Next is reshaping the call sites so the
+hooks enforce the corpus and the gauntlet runs on demand, which is decided but
+not built.
+
+Known gaps in what is built: this repo's CI has no `ANTHROPIC_API_KEY` secret,
+so its `ci` step has never run the judgment rules or contracts; they are scored
+by hand with `npm run eval:rules-llm` and `eval:contracts`. And a judgment finding
+at Stop does not tell the agent what the judge saw (Next, item 1).
 
 **Done and verified.**
 
@@ -806,17 +911,60 @@ whether a gate can be believed, whether it can be configured, and whether it
 survives real use. Writing rules into a machine that cannot yet be trusted only
 produces more output nobody can rely on.
 
-### 1. Use it for real on `orders-admin`
+### 1. The hooks enforce the corpus; the gauntlet runs on demand
 
-`orders-admin` is on the current version, with the working Stop hook. Build an
+Decided; see "Decided, not yet built: the hooks enforce the corpus, and the
+gauntlet is on demand" for the reasoning. To build:
+
+- **Remove the per-edit hook** from what `init --claude-hook` writes, and the
+  `edit` row from `src/sites.ts`. Keep `agentic-qa hook` answering quietly for a
+  while, so a repo whose settings still call it does not error on every edit.
+- **Stop, commit and CI report corpus findings only.** Drop unclaimed scanner
+  findings there, and run only the engines that claim a corpus rule routed to
+  the files being checked.
+- **Commit runs the corpus's mechanical rules; CI runs both tiers.** Already the
+  table's defaults apart from the gauntlet.
+- **`agentic-qa gauntlet`** runs every engine broad over the repo (or a path),
+  never blocks, and groups output by rule so a triage session sees "this rule,
+  these N places" rather than a wall. An npm script in this repo, and a
+  documented command for consuming repos.
+- **Stop messages the person only on the second pass**, with the findings that
+  still stand and any refused exceptions. No notes on clean turns.
+- **Judgment findings at Stop carry the judge's reason and the rule's
+  rationale.** Check the wording lands with a smoke scenario: the agent, handed
+  a judged violation, should be able to say what to change.
+- **Update the invariants this changes** in CLAUDE.md: "The PostToolUse hook
+  always exits zero", "The hook reports only on the file just edited", "Slow
+  engines stay out of the per-edit hook", "Nothing that writes a ledger may run
+  from a hook that can fire concurrently" (still true, now moot), the notes half
+  of "Stop blocks through a top-level decision", and "The corpus asserts
+  coverage", whose last sentence about gauntlet warnings changes.
+- **Smoke tests:** drop the per-edit scenario, change the notes scenario to
+  expect no message, add the second-pass-only message and the judgment reason.
+- **README:** the call-site table, the gauntlet command, and what the person
+  sees. The table test will force the first.
+- **`orders-admin`:** reinstall, then `init --claude-hook --force` so its
+  settings lose the per-edit hook.
+
+
+
+### 2. Use it for real on `orders-admin`
+
+Once item 1 is in. `orders-admin` is on the current version, with the working Stop hook. Build an
 actual feature there with the hooks live, and record what nothing else can show:
 
 - **The judgment tier at Stop, now that it can block.** It runs the llm rules and
   contract checks on every turn that changes code. Until the Stop fix its
   verdicts could not hold a turn, so two things have never been measured: the
   cost per turn, and how often a wrong verdict now holds the agent.
-- Which blocks were right, which were noise, and which notes anyone acted on.
-- Stop and per-edit latency during real work, not probes.
+- Which blocks were right and which were wrong, per rule.
+- Stop latency during real work, not probes, and cost per turn.
+- **Whether Stop blocks on the same rules again and again.** That is the signal
+  for session-start steering: an agent repeating a mistake it could have been
+  told about up front.
+- **A first gauntlet triage session** on real code: which community rules are
+  worth promoting into the corpus under one of the guardrails, and which should
+  be switched off in the shipped config for this stack.
 - Whether agents still reach for `qa-ignore` when they can edit, now that an
   uncommitted one releases nothing, and whether any try `git commit`.
 - Whether the refused-exception list is useful or nagging when the person asked
@@ -825,7 +973,7 @@ actual feature there with the hooks live, and record what nothing else can show:
 This is the calibration the fixtures cannot provide, and its findings will
 re-rank the items below it.
 
-### 2. CI documentation a consuming repo can follow
+### 3. CI documentation a consuming repo can follow
 
 `init` deliberately does not write CI (see "CI is documented, not generated").
 `agentic-qa ci` collapsed the checks into one step, but a working workflow still
@@ -837,7 +985,7 @@ consuming repo into the README, and prove it by running it in a real consuming
 repo before documenting it; `orders-admin` has no remote, so that needs one.
 Other providers get the command list, not examples.
 
-### 3. Adoption on an existing repo: the baseline ratchet
+### 4. Adoption on an existing repo: the baseline ratchet
 
 Half-solved by the severity split, and made more urgent by it. Pointing the
 gauntlet at an existing repo produces far more findings than 22 hand-written
@@ -850,7 +998,7 @@ and gets switched off the same afternoon. Snapshot the existing violations, fail
 only on new ones, and require the count to trend down. Every successful linter
 adoption works this way. It has to be designed in, not bolted on.
 
-### 4. Mutation grounding: adopt Stryker, then give it a trigger
+### 5. Mutation grounding: adopt Stryker, then give it a trigger
 
 Two problems, and the survey solved one of them. **StrykerJS** is mature mutation
 testing for JS/TS with deterministic operators, `--incremental` backed by its own
@@ -872,7 +1020,7 @@ verdict changed since the last run, which the committed ledger already knows.
 Needs a `--changed` selection over the ledger, and a decision about where it is
 invoked from.
 
-### 5. Packaging and configuration
+### 6. Packaging and configuration
 
 Mostly done. The package builds on install via `prepare`, ships `dist/` and the
 rules corpus, and has been verified by packing it, installing the tarball into a
@@ -893,15 +1041,16 @@ What is left:
 - **Stack profiles, framework gauntlets and a personal mode.** Designed in
   outline under "Raised, not yet designed"; all three build on the call-site table.
 
-### 6. Speed: a long-lived process
+### 7. Speed: a long-lived process
 
 Not needed yet. A fresh process per hook call spends almost all its time
 loading: eslint takes about 500ms to load and 20ms to lint, opengrep seconds to
-load and milliseconds to scan. A long-lived process would bring a per-edit check
-near 50ms and let Stop run opengrep without its load cost. Worth it only once
-item 1 shows latency is actually hurting.
+load and milliseconds to scan. A long-lived process would let Stop run opengrep
+without its load cost. Less pressing once item 1 removes the per-edit hook and
+keeps engines that claim no corpus rule out of Stop. Worth it only once
+item 2 shows latency is actually hurting.
 
-### 7. Make the gauntlet robust where no engine covers the stack
+### 8. Make the gauntlet robust where no engine covers the stack
 
 Separate from the corpus. The gauntlet is meant to be broad coverage for free,
 and it has holes wherever the engines and their plugins do not know the target
@@ -920,9 +1069,9 @@ stack:
 The probe app behind these measurements is `fixtures/probes/gauntlet-hono-express`.
 
 The rules written here are gauntlet rules, not corpus promises: they widen what
-is noticed, and only a corpus claim (item 8) makes one block.
+is noticed, and only a corpus claim (item 9) makes one block.
 
-### 8. The corpus, last
+### 9. The corpus, last
 
 Everything that writes, moves or retires a rule. Last because a rule is only
 worth as much as the machine that enforces it.
@@ -985,6 +1134,17 @@ actually matches before retiring a pattern.
 - **Patterns match code inside strings.** The unit-test table for those two
   patterns tripped them, so the cases live in `test/test-shape-cases.json`. The
   loop rule then correctly caught the test iterating over its own tables.
+
+#### The corpus is the guardrails; scanner rules sit under them
+
+The owner's guardrails in `~/code/full-stack-swe` are principles — authorise
+per record, validate at the boundary, keep the database behind the repository
+layer — not syntax. A corpus rule should be one principle, enforced by whatever
+tier can: a pattern, a judgment prompt, or several scanner rules claimed at once.
+SQL injection, SSRF and path traversal from the community rules would each be a
+claim under one "never trust request input" guardrail, rather than three corpus
+rules or three unowned notes. The gauntlet triage sessions (item 1's command) are
+how candidates are found; this item is where they are adopted.
 
 #### Classify the prose, then build the corpus from what is uncovered
 
@@ -1072,7 +1232,7 @@ Recorded from the build, so they are not relitigated.
   tsconfig the checked repo may not have, and a program build per run.
 - **Gauntlet noise is already measurable.** On this repo: 31 notes, including a
   real unused import, and `sonarjs/no-os-command-from-path` on every
-  `execFileSync("git")`, which is noise here. The answer is the ratchet (item 3)
+  `execFileSync("git")`, which is noise here. The answer is the ratchet (item 4)
   and trimming the preset deliberately, not filtering output to the corpus.
 
 ### The judgment tier is the part with no free incumbent
@@ -1125,6 +1285,19 @@ Recorded so they are thought about deliberately rather than discovered late.
 Each notes where it is likely to be decided — `init` flags, `qa.config.yaml`, or
 both — but none of them is settled.
 
+- **Session-start steering.** A `SessionStart` hook, installed by
+  `init --claude-hook`, putting a short form of the guardrails and how to treat
+  findings into the agent's context before it writes anything, from text shipped
+  in the package. Waiting on the trial showing repeated blocks on the same rules.
+  Verify with a smoke test before relying on it.
+- **Switching a gauntlet rule off for a whole repo.** Today the only ways are a
+  `qa-ignore` per line or editing the shipped config, which changes every repo.
+  A triage session that decides "this rule is wrong for us" needs somewhere to
+  record that, with a reason, probably in `qa.config.yaml`.
+- **`eval` is named for more than it does.** It scores the contract judge only;
+  the rules are scored by `rules --expected`. The npm scripts name them
+  properly; the command could follow.
+
 - **A check that a consuming repo's wiring works (`agentic-qa doctor`).** The
   smoke tests prove the tool's hooks behave; nothing proves a given repo is
   wired to a copy that has the commands its hooks call. `orders-admin` twice had
@@ -1169,6 +1342,6 @@ both — but none of them is settled.
   observability and ops, performance and reliability). Infrastructure has no
   pack: its one Terraform rule, `sec.no-world-open-security-group`, is filed
   under security. Creating empty packs now would fix a taxonomy before the
-  classification pass (item 8) has shown what the concepts actually are; the
+  classification pass (item 9) has shown what the concepts actually are; the
   pack list is more likely to fall out of that pass than to precede it. An
   `infra` pack is the one that is clearly missing already.

@@ -96,6 +96,11 @@ grounding needs.
 
 ## Invariants
 
+**Decided, not yet built:** the per-edit hook is being removed, the automatic
+call sites will enforce only the corpus, and the gauntlet will run on demand.
+Several invariants below change when that lands; ROADMAP Next item 1 lists
+which. Until then they describe the code as it is.
+
 - **The enforcement ladder.** Every rule declares the cheapest tier that can
   enforce it: `mechanical` (lint, tsc, dependency-cruiser, semgrep) before
   `llm` before `human`. Paying a model to do a linter's job is strictly worse.
@@ -331,6 +336,14 @@ grounding needs.
   for `--no-verify`, loosening a rule, or narrowing a scope to make a finding go
   away.
 
+- **Report open problems first.** When work is done, the first thing the owner
+  reads is what is still wrong, unfixed, unverified or assumed, with anything
+  that needs their decision. How it works comes after, briefly. A problem found
+  along the way is either fixed or named there, never left in the middle of a
+  summary.
+- **Restate a change of direction before acting on it.** When the owner reshapes
+  what the tool is for, say back what they asked for, flag anything risky in it,
+  and get agreement before editing.
 - **Evaluate before building.** Before a large piece of work, update ROADMAP
   in priority order and agree *what* to work on next. *How* to build it is
   Claude's call: design it, make the decisions, and report them. Do not ask the
