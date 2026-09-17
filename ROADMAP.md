@@ -963,7 +963,7 @@ So judgment at every turn's end does not fit a turn as built. The levers, not
 yet chosen: route llm rules on content as well as path (fewer calls; a bad
 pattern is a silent miss), judge every rule for a file in one call (one think
 per file; changes the ledger and needs re-scoring), raise concurrency, or move
-the judgment tiers off Stop to commit or CI, where minutes are acceptable. Also
+the judgment tiers off Stop to CI, where minutes are acceptable (not commit, which never calls a model). Also
 unmeasured still: what the agent does when Stop holds it for a judged finding.
 
 `orders-admin` is on the current version, with the working Stop hook. Build an
