@@ -319,6 +319,11 @@ grounding needs.
 
 ## Working on this repo itself
 
+- **Working here is dogfooding: report what the hooks do to you.** A note that
+  is wrong for this code, or that repeats without anyone acting on it, is a
+  finding about the tool, not background. Say so to the owner when it happens,
+  with the rule id and why it is or is not legitimate. Silently skimming past
+  noise is exactly the failure this system exists to prevent in its users.
 - **Never add a `qa-ignore` to get past a finding.** Not to release a Stop
   block, not to quiet the per-edit hook, and not with a reason that sounds
   right. If a finding looks wrong, say so to the person and let them decide; an
