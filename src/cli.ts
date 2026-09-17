@@ -32,7 +32,7 @@ Usage:
   agentic-qa rules --llm            also run the rules that need a model's judgment
   agentic-qa contracts [options]    verify tests assert what their descriptions claim
   agentic-qa mutate [options]       break the code on purpose and check the tests notice
-  agentic-qa eval [options]         score the judge against known-correct verdicts
+  agentic-qa eval [options]         judge, then score the contract judge against known verdicts
 
 Options:
   --git-hook          (init) commit gate: tracked hooks/pre-commit + prepare script
@@ -78,7 +78,15 @@ async function main(): Promise<number> {
 
   const cwd = process.cwd();
 
+  // Judges first, then scores. Scoring the committed ledger alone would report
+  // whatever verdicts were last saved, however stale: a judge prompt changed
+  // since would still score 5/5 until someone happened to run contracts.
+  // Only tests whose record is stale are re-judged, so an unchanged corpus
+  // costs nothing; --all forces every one.
   if (command === "eval") {
+    const config = loadConfig(cwd);
+    if (values.model) config.judge.model = values.model;
+    await checkContracts(config, { cwd, all: values.all, json: true });
     return runEval(cwd, values.expected ?? "expected.json") ? 0 : 1;
   }
 

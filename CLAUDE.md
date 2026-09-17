@@ -20,20 +20,30 @@ behave on code that was not written to be a test case.
 npm run build                 # tsc -> dist/
 npm test                      # vitest (fixtures/ excluded)
 npm run smoke                 # real headless Claude sessions against the hooks, ~$0.13
+npm run eval:rules            # score scanner and pattern rules on fixtures/rules; free, in CI
+npm run eval:rules-llm        # score judgment rules on fixtures/rules-llm; costs money
+npm run eval:contracts        # score the contract judge on fixtures/sample; costs money
 node dist/cli.js contracts    # judge tests against their descriptions
 node dist/cli.js mutate       # break the code and check the tests notice
-node dist/cli.js eval         # score the contract judge (not the rules)
 node dist/cli.js rules        # run the rules tiers; --llm adds judgment
 node dist/cli.js setup        # download the pinned scanners and rules now
 ```
 
-Four fixture corpora, used for different things:
+Run the eval script for whatever changed: a rule or scanner config, a judge
+prompt or schema, or the model. The paid two judge only what is stale in the
+committed fixture ledger, then score, so an unchanged corpus costs nothing;
+commit the ledger they rewrite. Scores from a ledger nobody refreshed mean
+nothing: both fixture ledgers once predated the judge version field and still
+read 5/5 and 19/19.
+
+Fixture corpora:
 
 ```
-cd fixtures/sample    && node ../../dist/cli.js contracts   # contract judging only
-cd fixtures/runnable  && node ../../dist/cli.js mutate      # judging + experiment
-cd fixtures/rules     && node ../../dist/cli.js rules --expected expected.json        # score mechanical rules, free
-cd fixtures/rules-llm && node ../../dist/cli.js rules --llm --expected expected.json  # score judgment rules, costs money
+fixtures/sample     # contract judging; its tests import a module that does not exist
+fixtures/runnable   # a real green suite, for mutate
+fixtures/rules      # scanner and pattern rules, each with clean controls
+fixtures/rules-llm  # judgment rules, including files they must call not-applicable
+fixtures/smoke      # inputs for npm run smoke
 ```
 
 `fixtures/probes` is not a corpus: kept experiments, not scored.

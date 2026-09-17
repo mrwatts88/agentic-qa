@@ -23,6 +23,9 @@
     "dev": "tsc -p tsconfig.json --watch",
     "test": "vitest run",
     "smoke": "vitest run --config vitest.smoke.config.ts",
+    "eval:rules": "npm run build && cd fixtures/rules && node ../../dist/cli.js rules --expected expected.json",
+    "eval:rules-llm": "npm run build && cd fixtures/rules-llm && node ../../dist/cli.js rules --llm --expected expected.json",
+    "eval:contracts": "npm run build && cd fixtures/sample && node ../../dist/cli.js eval",
     "qa": "node dist/cli.js"
   },
   "dependencies": {

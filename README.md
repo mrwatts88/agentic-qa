@@ -278,9 +278,12 @@ A checker that cries wolf gets switched off, and then a clean run means nothing.
 So the checker is scored against corpora whose correct answers are known, and
 false positives are reported separately from misses.
 
+In this repository:
+
 ```
-agentic-qa eval      # the contract judge
-agentic-qa rules --expected expected.json    # the rules
+npm run eval:rules        # scanner and pattern rules (free, runs in CI)
+npm run eval:rules-llm    # rules judged by a model
+npm run eval:contracts    # the contract judge
 ```
 
 Current: 5/5 contracts, 19/19 rule violations with no false positives across

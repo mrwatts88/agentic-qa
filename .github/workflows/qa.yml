@@ -52,6 +52,11 @@ jobs:
 
       - run: npm test
 
+      # This repo only: score the scanner and pattern rules against fixtures
+      # whose answers are known. Free and deterministic, so it runs on every
+      # push; the judgment scoring costs money and runs by hand.
+      - run: npm run eval:rules
+
       # The ci row of the call-site table: every scanner, then the judgment rules
       # and test contracts. Those call a model, which locally rides on Claude
       # Code's OAuth and here needs the key; without it they are skipped with a

@@ -6,487 +6,534 @@
       "file": "api/booking-safe.ts",
       "fileHash": "6c229275933c2f4b",
       "promptHash": "cefb146d87054504",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "not-applicable",
-      "reason": "This file contains a plain service/domain function (bookSeat) that takes slotId and userId as direct arguments; there is no request handler here that pulls an id out of req.params/query/body from an HTTP framework. The rule targets request-handling code, which is absent from this file.",
-      "line": 6,
-      "checkedAt": "2026-09-16T20:14:04.181Z"
+      "reason": "This is a service function taking slotId/userId as parameters with no request parsing (no req.params/query/body or route handler); the rule targets request handlers, not internal service functions receiving ids from callers.",
+      "checkedAt": "2026-09-17T02:46:37.670Z"
     },
     "be.authz.ownership-check\u0000api/booking.ts": {
       "ruleId": "be.authz.ownership-check",
       "file": "api/booking.ts",
       "fileHash": "07708a0c01f90aec",
       "promptHash": "cefb146d87054504",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "not-applicable",
-      "reason": "This file defines a plain async function (bookSeat) taking slotId and userId as parameters; it contains no request handling (no req/res, route, or param/query/body extraction), so the rule about request handlers checking authorization does not apply here.",
-      "checkedAt": "2026-09-16T20:14:04.705Z"
+      "reason": "This file exports a plain function taking slotId/userId as arguments; there is no request handling code (no req.params/query/body extraction), so the rule about request handlers loading records by an id from an incoming request does not apply here.",
+      "checkedAt": "2026-09-17T02:46:44.037Z"
     },
     "be.authz.ownership-check\u0000api/dashboard-safe.ts": {
       "ruleId": "be.authz.ownership-check",
       "file": "api/dashboard-safe.ts",
       "fileHash": "2a76ea83c55a37e4",
       "promptHash": "cefb146d87054504",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "not-applicable",
-      "reason": "This is a plain function that takes a limit parameter and returns recent orders; it does not read an identifier from a request nor act as a request handler, so the rule doesn't apply here.",
-      "checkedAt": "2026-09-16T20:14:05.365Z"
+      "reason": "This is a plain function taking a limit parameter, not a request handler reading an id from a route/query/body and loading a specific record by it; no request handling is present in this file.",
+      "checkedAt": "2026-09-17T02:46:48.194Z"
     },
     "be.authz.ownership-check\u0000api/dashboard.ts": {
       "ruleId": "be.authz.ownership-check",
       "file": "api/dashboard.ts",
       "fileHash": "d3aa7b52c6f7fc2c",
       "promptHash": "cefb146d87054504",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "not-applicable",
-      "reason": "This file contains no request handler reading an identifier from an incoming request (route param, query, or body); it's a service function taking a limit and internally fetching related records.",
-      "checkedAt": "2026-09-16T20:14:05.439Z"
+      "reason": "This file contains no request handler reading an id from a request; it's a helper function fetching recent orders by limit, with no auth/request context involved.",
+      "checkedAt": "2026-09-17T02:46:54.243Z"
     },
     "be.authz.ownership-check\u0000api/orders-delete-safe.ts": {
       "ruleId": "be.authz.ownership-check",
       "file": "api/orders-delete-safe.ts",
       "fileHash": "6c5f4a5f5a3782c9",
       "promptHash": "cefb146d87054504",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "ok",
-      "reason": "The delete handler scopes the deletion to session.accountId via deleteByIdForAccount, ensuring the caller can only delete orders belonging to their own account.",
-      "checkedAt": "2026-09-16T20:14:10.070Z"
+      "reason": "The delete handler passes both the request id and session.accountId to orderRepo.deleteByIdForAccount, scoping the deletion to the authenticated caller's account rather than just checking login status.",
+      "checkedAt": "2026-09-17T02:47:00.750Z"
     },
     "be.authz.ownership-check\u0000api/orders-delete.ts": {
       "ruleId": "be.authz.ownership-check",
       "file": "api/orders-delete.ts",
       "fileHash": "b256023cfb0e07aa",
       "promptHash": "cefb146d87054504",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "violated",
-      "reason": "The handler only checks that a session exists, then deletes the order by the raw :id param with no check that the order belongs to the authenticated caller, so any logged-in user can delete any order by id.",
+      "reason": "The handler only checks that a session exists, then deletes the order by the raw id from the URL with no check that the order belongs to the caller. Any authenticated user can delete another user's order by changing the id; the deleteById call (or a preceding lookup) must be scoped to or verify ownership against the caller's account.",
       "line": 19,
-      "checkedAt": "2026-09-16T20:14:10.830Z"
+      "checkedAt": "2026-09-17T02:47:06.794Z"
     },
     "be.authz.ownership-check\u0000api/orders-safe.ts": {
       "ruleId": "be.authz.ownership-check",
       "file": "api/orders-safe.ts",
       "fileHash": "f15eb1d4f4113f74",
       "promptHash": "cefb146d87054504",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "ok",
-      "reason": "The handler loads the order by id and then verifies order.customerId matches session.userId (line 20), returning 404 if not owned, so it checks authorization, not just authentication.",
-      "checkedAt": "2026-09-16T20:14:11.339Z"
+      "reason": "The handler loads the order by id and then verifies order.customerId === session.userId before returning it, denying access with NOT_FOUND otherwise, so it checks ownership rather than just authentication.",
+      "checkedAt": "2026-09-17T02:47:16.302Z"
     },
     "be.authz.ownership-check\u0000api/orders.ts": {
       "ruleId": "be.authz.ownership-check",
       "file": "api/orders.ts",
       "fileHash": "e784ba041f72e116",
       "promptHash": "cefb146d87054504",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "violated",
-      "reason": "The handler only checks that a session exists (line 11) before loading the order by the raw id from the URL param; it never verifies the caller owns that order or has admin privileges, so any logged-in user can fetch any order by changing the id.",
+      "reason": "The handler checks only that a session exists, then loads the order solely by the request's :id param with no check that the order belongs to the authenticated caller (e.g. no orgId/userId filter or ownership comparison), so any logged-in user can read any other user's order by changing the id.",
       "line": 15,
-      "checkedAt": "2026-09-16T20:14:12.888Z"
+      "checkedAt": "2026-09-17T02:47:22.927Z"
     },
     "be.authz.ownership-check\u0000api/reports-ignored.ts": {
       "ruleId": "be.authz.ownership-check",
       "file": "api/reports-ignored.ts",
       "fileHash": "780bee506b2b1f54",
       "promptHash": "cefb146d87054504",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "not-applicable",
-      "reason": "This file contains a plain async function that takes a customerId parameter and calls a billing client; it is not a request handler reading an identifier from an incoming HTTP request (no route params, query string, or body parsing present).",
-      "checkedAt": "2026-09-16T20:14:17.632Z"
+      "reason": "This is a plain function that receives a customerId parameter from its caller; it is not a request handler extracting an identifier from an incoming HTTP request (no req/res, route, or query/body parsing present).",
+      "checkedAt": "2026-09-17T02:47:30.954Z"
     },
     "be.authz.ownership-check\u0000api/reports-safe.ts": {
       "ruleId": "be.authz.ownership-check",
       "file": "api/reports-safe.ts",
       "fileHash": "da2a6bdd937bae10",
       "promptHash": "cefb146d87054504",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "not-applicable",
-      "reason": "This is a plain service function that takes a customerId parameter and calls a billing client; there is no request handler reading an id from a route/query/body, so the rule doesn't apply.",
-      "checkedAt": "2026-09-16T20:14:16.901Z"
+      "reason": "This file just defines a service function that takes a customerId parameter from its caller; there is no request handler extracting an id from a route/query/body, so the rule doesn't apply.",
+      "checkedAt": "2026-09-17T02:47:46.100Z"
     },
     "be.authz.ownership-check\u0000api/reports.ts": {
       "ruleId": "be.authz.ownership-check",
       "file": "api/reports.ts",
       "fileHash": "e7b935169337ec65",
       "promptHash": "cefb146d87054504",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "not-applicable",
-      "reason": "This is a plain helper function receiving customerId as a parameter, not a request handler extracting an id from an HTTP request (route param, query, or body); no request handling is present in this file.",
-      "checkedAt": "2026-09-16T20:14:17.423Z"
+      "reason": "This file contains a plain function that calls a billing client with a customerId passed by its caller; there is no request handler extracting an id from a route/query/body, so the rule does not apply.",
+      "checkedAt": "2026-09-17T02:47:51.867Z"
     },
     "be.authz.ownership-check\u0000lib/format.ts": {
       "ruleId": "be.authz.ownership-check",
       "file": "lib/format.ts",
       "fileHash": "18b898b02de5e3f4",
       "promptHash": "cefb146d87054504",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "not-applicable",
-      "reason": "This file contains only pure formatting helper functions with no request handling or record loading by id.",
-      "checkedAt": "2026-09-16T20:14:18.821Z"
+      "reason": "This file only contains pure formatting utility functions with no request handling, id lookup, or record access.",
+      "checkedAt": "2026-09-17T02:48:00.090Z"
     },
     "be.errors.no-silent-fallback\u0000api/booking-safe.ts": {
       "ruleId": "be.errors.no-silent-fallback",
       "file": "api/booking-safe.ts",
       "fileHash": "6c229275933c2f4b",
       "promptHash": "1bc82ef17649039c",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "not-applicable",
-      "reason": "There is no catch block here; errors thrown by seatRepo calls propagate normally. The SOLD_OUT return is an explicit business-logic result, not a swallowed failure.",
-      "checkedAt": "2026-09-16T20:11:37.363Z"
+      "reason": "There is no try/catch block in this file; the SOLD_OUT branch is an explicit, distinguishable business outcome (ok: false with a specific error code), not an error swallowed into a fake success.",
+      "checkedAt": "2026-09-17T02:46:35.666Z"
     },
     "be.errors.no-silent-fallback\u0000api/booking.ts": {
       "ruleId": "be.errors.no-silent-fallback",
       "file": "api/booking.ts",
       "fileHash": "07708a0c01f90aec",
       "promptHash": "1bc82ef17649039c",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "not-applicable",
-      "reason": "There is no catch block or error-handling logic in this file; errors from seatRepo calls propagate normally, so the rule about masking failures does not apply.",
-      "checkedAt": "2026-09-16T20:11:43.834Z"
+      "reason": "There is no try/catch block in this file; errors from seatRepo or the transaction will propagate normally, so there is no swallowed failure to evaluate.",
+      "checkedAt": "2026-09-17T02:46:41.620Z"
     },
     "be.errors.no-silent-fallback\u0000api/dashboard-safe.ts": {
       "ruleId": "be.errors.no-silent-fallback",
       "file": "api/dashboard-safe.ts",
       "fileHash": "2a76ea83c55a37e4",
       "promptHash": "1bc82ef17649039c",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "not-applicable",
-      "reason": "There is no try/catch or error-swallowing logic in this file; the `?? \"Unknown\"` fallback handles a missing customer lookup within a successful call, not a failure being converted into a fake success.",
-      "checkedAt": "2026-09-16T20:11:53.514Z"
+      "reason": "There is no try/catch block in this file; errors from orderRepo/customerRepo would propagate to the caller. The '?? \\\"Unknown\\\"' fallback handles a missing customer lookup, not a caught failure.",
+      "checkedAt": "2026-09-17T02:46:50.384Z"
     },
     "be.errors.no-silent-fallback\u0000api/dashboard.ts": {
       "ruleId": "be.errors.no-silent-fallback",
       "file": "api/dashboard.ts",
       "fileHash": "d3aa7b52c6f7fc2c",
       "promptHash": "1bc82ef17649039c",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "not-applicable",
-      "reason": "There is no try/catch block in this file; errors from orderRepo or customerRepo simply propagate to the caller, so there's nothing that converts a failure into a fake success.",
-      "checkedAt": "2026-09-16T20:12:00.696Z"
+      "reason": "There is no try/catch or error-handling logic in this file; failures from orderRepo/customerRepo propagate as unhandled rejections rather than being converted into a fake success.",
+      "checkedAt": "2026-09-17T02:46:56.169Z"
     },
     "be.errors.no-silent-fallback\u0000api/orders-delete-safe.ts": {
       "ruleId": "be.errors.no-silent-fallback",
       "file": "api/orders-delete-safe.ts",
       "fileHash": "6c5f4a5f5a3782c9",
       "promptHash": "1bc82ef17649039c",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "not-applicable",
-      "reason": "There is no try/catch block in this file; the delete handler does not swallow errors — any thrown exception from orderRepo.deleteByIdForAccount propagates normally, and a false/undefined return is explicitly mapped to a 404, not a fabricated success.",
-      "checkedAt": "2026-09-16T20:08:44.764Z"
+      "reason": "There is no try/catch block in this file; errors from orderRepo.deleteByIdForAccount would propagate normally, so the rule about swallowing failures doesn't apply here.",
+      "checkedAt": "2026-09-17T02:47:02.534Z"
     },
     "be.errors.no-silent-fallback\u0000api/orders-delete.ts": {
       "ruleId": "be.errors.no-silent-fallback",
       "file": "api/orders-delete.ts",
       "fileHash": "b256023cfb0e07aa",
       "promptHash": "1bc82ef17649039c",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "not-applicable",
-      "reason": "There is no try/catch block in this file; any error thrown by orderRepo.deleteById would propagate normally rather than being swallowed.",
-      "checkedAt": "2026-09-16T20:08:48.830Z"
+      "reason": "There is no try/catch block in this file; errors from orderRepo.deleteById propagate uncaught rather than being swallowed into a fake success.",
+      "checkedAt": "2026-09-17T02:48:33.162Z"
     },
     "be.errors.no-silent-fallback\u0000api/orders-safe.ts": {
       "ruleId": "be.errors.no-silent-fallback",
       "file": "api/orders-safe.ts",
       "fileHash": "f15eb1d4f4113f74",
       "promptHash": "1bc82ef17649039c",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "not-applicable",
-      "reason": "There is no catch block or error-swallowing logic in this file; errors from findOrderById would propagate normally.",
-      "checkedAt": "2026-09-16T20:12:06.059Z"
+      "reason": "There is no try/catch block in this file; errors from findOrderById would propagate normally, so the rule about catch blocks masking failures does not apply.",
+      "checkedAt": "2026-09-17T02:47:18.157Z"
     },
     "be.errors.no-silent-fallback\u0000api/orders.ts": {
       "ruleId": "be.errors.no-silent-fallback",
       "file": "api/orders.ts",
       "fileHash": "e784ba041f72e116",
       "promptHash": "1bc82ef17649039c",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "not-applicable",
-      "reason": "There is no catch block in this file; errors from findOrderById would propagate normally, and the only conditional returns are explicit 401/404 responses, not error swallowing.",
-      "checkedAt": "2026-09-16T20:12:11.784Z"
+      "reason": "No try/catch or error-swallowing logic exists in this file; errors from findOrderById simply propagate, and the not-found case returns an explicit 404 rather than a fake success.",
+      "checkedAt": "2026-09-17T02:47:24.038Z"
     },
     "be.errors.no-silent-fallback\u0000api/reports-ignored.ts": {
       "ruleId": "be.errors.no-silent-fallback",
       "file": "api/reports-ignored.ts",
       "fileHash": "780bee506b2b1f54",
       "promptHash": "1bc82ef17649039c",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "violated",
-      "reason": "Catching any fetchInvoices error and returning [] makes a billing-service outage indistinguishable from a customer with zero invoices; the caller gets a plausible empty list with no error signal, which is exactly the silent-fallback pattern the rule forbids.",
+      "reason": "The catch block swallows the error from fetchInvoices and returns an empty array, which is indistinguishable from a customer that genuinely has zero invoices; the caller has no way to detect the billing-service failure, so it should rethrow, return a distinguishable error/result type, or otherwise surface the failure.",
       "line": 11,
-      "checkedAt": "2026-09-16T20:12:21.010Z"
+      "checkedAt": "2026-09-17T02:47:40.189Z"
     },
     "be.errors.no-silent-fallback\u0000api/reports-safe.ts": {
       "ruleId": "be.errors.no-silent-fallback",
       "file": "api/reports-safe.ts",
       "fileHash": "da2a6bdd937bae10",
       "promptHash": "1bc82ef17649039c",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "ok",
-      "reason": "The catch block logs the error but rethrows it (line 12), so the caller still sees the failure; no fallback success value is returned.",
-      "checkedAt": "2026-09-16T20:12:26.706Z"
+      "reason": "The catch block logs the error and rethrows it, so callers still see the failure and no fake success value is returned.",
+      "checkedAt": "2026-09-17T02:47:43.447Z"
     },
     "be.errors.no-silent-fallback\u0000api/reports.ts": {
       "ruleId": "be.errors.no-silent-fallback",
       "file": "api/reports.ts",
       "fileHash": "e7b935169337ec65",
       "promptHash": "1bc82ef17649039c",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "violated",
-      "reason": "The catch block silently returns an empty array on any failure (network error, timeout, service outage), which is indistinguishable from a customer legitimately having zero invoices. There is no logging, rethrow, or error signal, so callers cannot tell the billing service failed.",
+      "reason": "On error the function silently returns an empty array, identical to a customer with genuinely zero invoices; there is no logging, rethrow, or error signal, so callers cannot distinguish a billing-service outage from a successful empty result.",
       "line": 10,
-      "checkedAt": "2026-09-16T20:12:35.220Z"
+      "checkedAt": "2026-09-17T02:47:54.791Z"
     },
     "be.errors.no-silent-fallback\u0000lib/format.ts": {
       "ruleId": "be.errors.no-silent-fallback",
       "file": "lib/format.ts",
       "fileHash": "18b898b02de5e3f4",
       "promptHash": "1bc82ef17649039c",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "not-applicable",
-      "reason": "No try/catch blocks or error handling in this file at all.",
-      "checkedAt": "2026-09-16T20:12:40.485Z"
+      "reason": "No try/catch or error handling exists in this file; both functions are pure formatting helpers with no failure paths to swallow.",
+      "checkedAt": "2026-09-17T02:48:04.097Z"
     },
     "data.orm.no-query-inside-loop\u0000api/booking-safe.ts": {
       "ruleId": "data.orm.no-query-inside-loop",
       "file": "api/booking-safe.ts",
       "fileHash": "6c229275933c2f4b",
       "promptHash": "27ec5edad95b390b",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "not-applicable",
-      "reason": "No loop or collection iteration exists in this file; it performs a single sequential booking operation with two queries, no N+1 pattern present.",
-      "checkedAt": "2026-09-16T20:11:36.368Z"
+      "reason": "There is no loop or collection iteration in this file; it performs a single sequential set of queries for one booking.",
+      "checkedAt": "2026-09-17T02:46:36.498Z"
     },
     "data.orm.no-query-inside-loop\u0000api/booking.ts": {
       "ruleId": "data.orm.no-query-inside-loop",
       "file": "api/booking.ts",
       "fileHash": "07708a0c01f90aec",
       "promptHash": "27ec5edad95b390b",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "not-applicable",
-      "reason": "There is no loop or iteration over a collection here; this function performs a fixed sequence of single-record queries for one booking, not a per-item lookup.",
-      "checkedAt": "2026-09-16T20:11:46.897Z"
+      "reason": "There is no loop or per-item iteration over a collection here; the function makes a fixed, small sequence of queries for a single booking operation.",
+      "checkedAt": "2026-09-17T02:46:43.905Z"
     },
     "data.orm.no-query-inside-loop\u0000api/dashboard-safe.ts": {
       "ruleId": "data.orm.no-query-inside-loop",
       "file": "api/dashboard-safe.ts",
       "fileHash": "2a76ea83c55a37e4",
       "promptHash": "27ec5edad95b390b",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "ok",
-      "reason": "Orders and customers are each fetched with a single batched query (findByIds with a mapped array of ids); the .map() calls at lines 9, 14, and 16 are pure in-memory transformations with no per-item queries, so there's no N+1 pattern here.",
-      "checkedAt": "2026-09-16T20:11:58.120Z"
+      "reason": "Orders and customers are each fetched in a single batched query (findRecent, findByIds), and the .map() calls only do in-memory lookups against the Map, not per-item database calls.",
+      "checkedAt": "2026-09-17T02:46:52.251Z"
     },
     "data.orm.no-query-inside-loop\u0000api/dashboard.ts": {
       "ruleId": "data.orm.no-query-inside-loop",
       "file": "api/dashboard.ts",
       "fileHash": "d3aa7b52c6f7fc2c",
       "promptHash": "27ec5edad95b390b",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "violated",
-      "reason": "The for loop calls customerRepo.findById once per order (N+1); should batch-fetch customers via a single query like customerRepo.findByIds(orderCustomerIds) and map results.",
+      "reason": "customerRepo.findById is called once per order inside the for loop, an N+1 query pattern; should batch-fetch customers by the collected customerIds in one query and map them.",
       "line": 11,
-      "checkedAt": "2026-09-16T20:12:04.832Z"
+      "checkedAt": "2026-09-17T02:46:59.511Z"
     },
     "data.orm.no-query-inside-loop\u0000api/orders-delete-safe.ts": {
       "ruleId": "data.orm.no-query-inside-loop",
       "file": "api/orders-delete-safe.ts",
       "fileHash": "6c5f4a5f5a3782c9",
       "promptHash": "27ec5edad95b390b",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "not-applicable",
-      "reason": "There is no loop or per-element iteration here; a single delete call is made for one order by id, so N+1 does not apply.",
-      "checkedAt": "2026-09-16T20:08:42.527Z"
+      "reason": "There is no loop or collection iteration here at all; it's a single delete operation for one order ID per request.",
+      "checkedAt": "2026-09-17T02:47:05.314Z"
     },
     "data.orm.no-query-inside-loop\u0000api/orders-delete.ts": {
       "ruleId": "data.orm.no-query-inside-loop",
       "file": "api/orders-delete.ts",
       "fileHash": "b256023cfb0e07aa",
       "promptHash": "27ec5edad95b390b",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "not-applicable",
-      "reason": "No loop or collection iteration exists in this handler; it performs a single deleteById call for one order, so the N+1 pattern doesn't apply.",
-      "checkedAt": "2026-09-16T20:08:50.580Z"
+      "reason": "No loop or collection iteration exists in this file; it performs a single deleteById call for one order.",
+      "checkedAt": "2026-09-17T02:47:10.600Z"
     },
     "data.orm.no-query-inside-loop\u0000api/orders-safe.ts": {
       "ruleId": "data.orm.no-query-inside-loop",
       "file": "api/orders-safe.ts",
       "fileHash": "f15eb1d4f4113f74",
       "promptHash": "27ec5edad95b390b",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "not-applicable",
-      "reason": "This handler fetches a single order by id with one query; there is no loop or collection iteration involved.",
-      "checkedAt": "2026-09-16T20:12:11.554Z"
+      "reason": "This handler fetches a single order by id with one query; there is no loop or collection iteration involved, so the N+1 rule doesn't apply.",
+      "checkedAt": "2026-09-17T02:47:21.866Z"
     },
     "data.orm.no-query-inside-loop\u0000api/orders.ts": {
       "ruleId": "data.orm.no-query-inside-loop",
       "file": "api/orders.ts",
       "fileHash": "e784ba041f72e116",
       "promptHash": "27ec5edad95b390b",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "not-applicable",
       "reason": "This handler fetches a single order by id with one query; there is no loop or collection iteration involved.",
-      "checkedAt": "2026-09-16T20:12:18.601Z"
+      "checkedAt": "2026-09-17T02:47:31.310Z"
     },
     "data.orm.no-query-inside-loop\u0000api/reports-ignored.ts": {
       "ruleId": "data.orm.no-query-inside-loop",
       "file": "api/reports-ignored.ts",
       "fileHash": "780bee506b2b1f54",
       "promptHash": "27ec5edad95b390b",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "not-applicable",
-      "reason": "There is no loop or per-item iteration here; it's a single call to fetchInvoices for one customer, not a batch of per-element queries.",
-      "checkedAt": "2026-09-16T20:12:25.662Z"
+      "reason": "There is no loop or per-item iteration here—just a single fetchInvoices call for one customerId, so N+1 concerns don't apply.",
+      "checkedAt": "2026-09-17T02:47:37.969Z"
     },
     "data.orm.no-query-inside-loop\u0000api/reports-safe.ts": {
       "ruleId": "data.orm.no-query-inside-loop",
       "file": "api/reports-safe.ts",
       "fileHash": "da2a6bdd937bae10",
       "promptHash": "27ec5edad95b390b",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "not-applicable",
-      "reason": "No loop or per-item iteration here; it's a single fetchInvoices call for one customerId.",
-      "checkedAt": "2026-09-16T20:12:31.176Z"
+      "reason": "There is no loop or per-item iteration here; it's a single fetch call for one customer's invoices, so the N+1 pattern doesn't apply.",
+      "checkedAt": "2026-09-17T02:47:52.336Z"
     },
     "data.orm.no-query-inside-loop\u0000api/reports.ts": {
       "ruleId": "data.orm.no-query-inside-loop",
       "file": "api/reports.ts",
       "fileHash": "e7b935169337ec65",
       "promptHash": "27ec5edad95b390b",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "not-applicable",
-      "reason": "There is no loop or per-item iteration here; it's a single fetchInvoices call for one customerId.",
-      "checkedAt": "2026-09-16T20:12:36.929Z"
+      "reason": "There is no loop or per-item iteration here; it's a single call to fetchInvoices for one customerId.",
+      "checkedAt": "2026-09-17T02:47:59.931Z"
     },
     "data.orm.no-query-inside-loop\u0000lib/format.ts": {
       "ruleId": "data.orm.no-query-inside-loop",
       "file": "lib/format.ts",
       "fileHash": "18b898b02de5e3f4",
       "promptHash": "27ec5edad95b390b",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "not-applicable",
       "reason": "This file contains only pure string/number formatting helpers with no database or repository calls at all.",
-      "checkedAt": "2026-09-16T20:12:46.578Z"
+      "checkedAt": "2026-09-17T02:48:09.179Z"
     },
     "data.tx.no-read-then-write-race\u0000api/booking-safe.ts": {
       "ruleId": "data.tx.no-read-then-write-race",
       "file": "api/booking-safe.ts",
       "fileHash": "6c229275933c2f4b",
       "promptHash": "fcb529af462fa479",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "ok",
-      "reason": "The decision is made via seatRepo.decrementIfAvailable, an atomic conditional update (decrement guarded by availability check) rather than a separate read-then-write, so concurrent callers cannot both succeed on the last seat.",
-      "checkedAt": "2026-09-16T20:11:36.537Z"
+      "reason": "The booking decision relies on seatRepo.decrementIfAvailable, an atomic conditional update (guarded decrement) rather than a separate read-then-write, so concurrent callers cannot both succeed on the last seat.",
+      "checkedAt": "2026-09-17T02:46:35.793Z"
     },
     "data.tx.no-read-then-write-race\u0000api/booking.ts": {
       "ruleId": "data.tx.no-read-then-write-race",
       "file": "api/booking.ts",
       "fileHash": "07708a0c01f90aec",
       "promptHash": "fcb529af462fa479",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "violated",
-      "reason": "The code reads slot.seatsAvailable (line 8), decides based on it (line 10), then writes a value computed from the stale read (line 14) using a plain update rather than a conditional WHERE guard, unique constraint, or SELECT FOR UPDATE. Under read committed, two concurrent bookSeat calls can both read seatsAvailable=1, both pass the check, and both write seatsAvailable=0, overbooking the seat; wrapping this in withTransaction does not prevent it. Fix by using a conditional update like `UPDATE ... SET seatsAvailable = seatsAvailable - 1 WHERE id = slotId AND seatsAvailable > 0` and checking the affected row count, or by locking the row with SELECT FOR UPDATE before the check.",
+      "reason": "The code reads slot.seatsAvailable, decides via the check at line 10, then writes seatsAvailable - 1 with no conditional WHERE guard (e.g. WHERE seatsAvailable = slot.seatsAvailable or seatsAvailable > 0) and no SELECT FOR UPDATE/unique constraint. Under read committed, two concurrent bookings can both read the same seatsAvailable, both pass the check, and both write the decremented value, overselling the seat despite the transaction wrapper.",
       "line": 14,
-      "checkedAt": "2026-09-16T20:11:49.335Z"
+      "checkedAt": "2026-09-17T02:46:45.983Z"
     },
     "data.tx.no-read-then-write-race\u0000api/dashboard-safe.ts": {
       "ruleId": "data.tx.no-read-then-write-race",
       "file": "api/dashboard-safe.ts",
       "fileHash": "2a76ea83c55a37e4",
       "promptHash": "fcb529af462fa479",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "not-applicable",
-      "reason": "This code only performs reads (findRecent, findByIds) and returns a computed view; there is no write or decision-then-write sequence for the rule to apply to.",
-      "checkedAt": "2026-09-16T20:11:55.911Z"
+      "reason": "This code only performs reads (fetching orders and customers) and returns a merged view; there is no write or decision-based mutation involved, so the read-then-write race condition rule does not apply.",
+      "checkedAt": "2026-09-17T02:46:49.596Z"
     },
     "data.tx.no-read-then-write-race\u0000api/dashboard.ts": {
       "ruleId": "data.tx.no-read-then-write-race",
       "file": "api/dashboard.ts",
       "fileHash": "d3aa7b52c6f7fc2c",
       "promptHash": "fcb529af462fa479",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "not-applicable",
-      "reason": "This code only reads data (orders and customers) to build a dashboard view; there is no write or decision-then-write sequence that could race under concurrent execution.",
-      "checkedAt": "2026-09-16T20:12:01.925Z"
+      "reason": "This code only performs reads (findRecent, findById) to assemble a dashboard view; there is no write or decision-then-write sequence for concurrent callers to race on.",
+      "checkedAt": "2026-09-17T02:46:56.597Z"
     },
     "data.tx.no-read-then-write-race\u0000api/orders-delete-safe.ts": {
       "ruleId": "data.tx.no-read-then-write-race",
       "file": "api/orders-delete-safe.ts",
       "fileHash": "6c5f4a5f5a3782c9",
       "promptHash": "fcb529af462fa479",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "not-applicable",
-      "reason": "The delete is a single atomic call (deleteByIdForAccount) scoped by id and accountId; there is no separate read-then-decide-then-write sequence that concurrent callers could race on.",
-      "checkedAt": "2026-09-16T20:08:43.168Z"
+      "reason": "The handler performs a single atomic delete (deleteByIdForAccount) with no prior read-then-decide step in application code; there's no read-decide-write race to guard against.",
+      "checkedAt": "2026-09-17T02:47:03.312Z"
     },
     "data.tx.no-read-then-write-race\u0000api/orders-delete.ts": {
       "ruleId": "data.tx.no-read-then-write-race",
       "file": "api/orders-delete.ts",
       "fileHash": "b256023cfb0e07aa",
       "promptHash": "fcb529af462fa479",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "not-applicable",
-      "reason": "The handler performs a single atomic deleteById call with no separate read-then-decide-then-write sequence, so there's no race window the rule addresses.",
-      "checkedAt": "2026-09-16T20:08:49.859Z"
+      "reason": "There is no read-then-decide-then-write sequence; deleteById performs a single atomic delete and the returned boolean simply reflects whether a row existed to delete.",
+      "checkedAt": "2026-09-17T02:47:10.120Z"
     },
     "data.tx.no-read-then-write-race\u0000api/orders-safe.ts": {
       "ruleId": "data.tx.no-read-then-write-race",
       "file": "api/orders-safe.ts",
       "fileHash": "f15eb1d4f4113f74",
       "promptHash": "fcb529af462fa479",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "not-applicable",
-      "reason": "This is a read-only GET endpoint that fetches and returns an order with no subsequent write; the read-then-write race condition rule does not apply.",
-      "checkedAt": "2026-09-16T20:12:07.570Z"
+      "reason": "This endpoint only reads and returns an order; there is no write/decision-then-write sequence for a race condition to occur.",
+      "checkedAt": "2026-09-17T02:47:16.679Z"
     },
     "data.tx.no-read-then-write-race\u0000api/orders.ts": {
       "ruleId": "data.tx.no-read-then-write-race",
       "file": "api/orders.ts",
       "fileHash": "e784ba041f72e116",
       "promptHash": "fcb529af462fa479",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "not-applicable",
-      "reason": "This endpoint only reads an order and returns it; there is no write or state-changing decision based on the read.",
-      "checkedAt": "2026-09-16T20:12:13.080Z"
+      "reason": "This endpoint only reads and returns an order; there is no write or decision-then-write sequence involved.",
+      "checkedAt": "2026-09-17T02:47:31.165Z"
     },
     "data.tx.no-read-then-write-race\u0000api/reports-ignored.ts": {
       "ruleId": "data.tx.no-read-then-write-race",
       "file": "api/reports-ignored.ts",
       "fileHash": "780bee506b2b1f54",
       "promptHash": "fcb529af462fa479",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "not-applicable",
-      "reason": "This code only reads invoices and returns them (or an empty array on error); there is no decision-then-write sequence at all.",
-      "checkedAt": "2026-09-16T20:12:18.968Z"
+      "reason": "This file only reads invoices from a billing client with error handling; there is no read-decide-write sequence or any write/mutation at all.",
+      "checkedAt": "2026-09-17T02:47:36.452Z"
     },
     "data.tx.no-read-then-write-race\u0000api/reports-safe.ts": {
       "ruleId": "data.tx.no-read-then-write-race",
       "file": "api/reports-safe.ts",
       "fileHash": "da2a6bdd937bae10",
       "promptHash": "fcb529af462fa479",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "not-applicable",
-      "reason": "This file only reads invoices from a billing service and logs errors; there is no read-then-write decision logic or shared mutable state at risk of a race condition.",
-      "checkedAt": "2026-09-16T20:12:27.452Z"
+      "reason": "This file only reads invoices from a billing service and logs errors; there is no read-then-write decision logic here.",
+      "checkedAt": "2026-09-17T02:47:47.363Z"
     },
     "data.tx.no-read-then-write-race\u0000api/reports.ts": {
       "ruleId": "data.tx.no-read-then-write-race",
       "file": "api/reports.ts",
       "fileHash": "e7b935169337ec65",
       "promptHash": "fcb529af462fa479",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "not-applicable",
-      "reason": "This file only fetches invoices and returns them; there is no read-decide-write sequence at all.",
-      "checkedAt": "2026-09-16T20:12:34.831Z"
+      "reason": "This file only fetches invoices from an external service with error handling; there is no read-decide-write sequence or shared mutable state involved.",
+      "checkedAt": "2026-09-17T02:47:58.105Z"
     },
     "data.tx.no-read-then-write-race\u0000lib/format.ts": {
       "ruleId": "data.tx.no-read-then-write-race",
       "file": "lib/format.ts",
       "fileHash": "18b898b02de5e3f4",
       "promptHash": "fcb529af462fa479",
+      "judgeVersion": 1,
       "model": "sonnet",
       "verdict": "not-applicable",
-      "reason": "This file contains only pure formatting functions with no data reads/writes or persistence logic at all.",
-      "checkedAt": "2026-09-16T20:12:42.328Z"
+      "reason": "This file only contains pure formatting helpers (currency and title case); there is no read-decide-write sequence or any data persistence involved.",
+      "checkedAt": "2026-09-17T02:48:05.955Z"
     }
   }
 }
