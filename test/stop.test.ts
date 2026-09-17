@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { runStop } from "../src/stop";
+import { judgedLines, runStop } from "../src/stop";
 import { defaultAdapters } from "../src/rules/adapters/index";
 import type { Adapter } from "../src/rules/adapters/types";
 
@@ -242,5 +242,25 @@ describe("the Stop hook", () => {
     expect(payload.decision).toBeUndefined();
     expect(payload.hookSpecificOutput).toBeUndefined();
     expect(payload.systemMessage).toContain("could not run");
+  });
+
+  /**
+   * The statement alone names a principle, not a fix. The judge's reason is the
+   * only part that says what it saw in this file, so a block without it leaves
+   * the agent guessing.
+   */
+  it("tells the agent what the judge saw and why the rule matters", () => {
+    const text = judgedLines({
+      file: "src/orders.ts",
+      line: 12,
+      statement: "Check that the record belongs to the caller",
+      ruleId: "be.authz.ownership-check",
+      excerpt: "loads the order by id but never checks it belongs to the caller",
+      rationale: "Guessable ids let one user read another's orders.",
+    });
+
+    expect(text).toContain("src/orders.ts:12");
+    expect(text).toContain("What the judge saw: loads the order by id");
+    expect(text).toContain("Why it matters: Guessable ids");
   });
 });

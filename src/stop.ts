@@ -63,6 +63,20 @@ const FIX_OR_EXCUSE = `Fix these before finishing.\n${EXCEPTIONS_ARE_APPROVED}`;
 /** Notes from the slow engines are shown here, since the per-edit hook skips them. */
 const NOTE_LIMIT = 15;
 
+/**
+ * A judged finding, worded so the agent can act on it. The statement names the
+ * principle; only the judge's reason says what it saw in this file, and the
+ * rationale says why it matters. Without them a block reads as "you broke rule
+ * X" with nothing to fix.
+ */
+export function judgedLines(f: Pick<Finding, "file" | "line" | "statement" | "ruleId" | "excerpt" | "rationale">): string {
+  return [
+    `- ${f.file}:${f.line} ${f.statement} [${f.ruleId}]`,
+    ...(f.excerpt ? [`  What the judge saw: ${f.excerpt}`] : []),
+    ...(f.rationale ? [`  Why it matters: ${f.rationale}`] : []),
+  ].join("\n");
+}
+
 function noteLines(notes: Finding[]): string[] {
   const shown = notes.slice(0, NOTE_LIMIT).map((f) => `- ${f.file}:${f.line} ${f.statement} [${f.ruleId}]`);
   const more = notes.length - shown.length;
@@ -111,9 +125,7 @@ export async function runStop(cwd: string, options: StopOptions): Promise<number
     if (!blocked && judgment && scope) {
       if (policy.llm) {
         const llm = await runLlmRules(cwd, files, rules, config, false, true, gate);
-        for (const f of llm.findings) {
-          findings.push(`- ${f.file}:${f.line} ${f.statement} [${f.ruleId}]`);
-        }
+        for (const f of llm.findings) findings.push(judgedLines(f));
       }
 
       if (policy.contracts) {

@@ -931,8 +931,11 @@ gauntlet is on demand" for the reasoning. To build:
 - **Stop messages the person only on the second pass**, with the findings that
   still stand and any refused exceptions. No notes on clean turns.
 - **Judgment findings at Stop carry the judge's reason and the rule's
-  rationale.** Check the wording lands with a smoke scenario: the agent, handed
-  a judged violation, should be able to say what to change.
+  rationale.** Built: `judgedLines` in `src/stop.ts`, unit-tested. Still to do:
+  check the wording lands with a smoke scenario — the agent, handed a judged
+  violation, should be able to say what to change. That scenario needs Stop's
+  judgment tier on, which this repo's config turns off, so it must set up its
+  own config and costs a judge call.
 - **Update the invariants this changes** in CLAUDE.md: "The PostToolUse hook
   always exits zero", "The hook reports only on the file just edited", "Slow
   engines stay out of the per-edit hook", "Nothing that writes a ledger may run
