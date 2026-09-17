@@ -225,9 +225,14 @@ you already use:
 
 Cache `~/.cache/agentic-qa` between runs so the download happens once. The
 judgment steps need `ANTHROPIC_API_KEY` as a secret, because `claude -p` rides on
-your local Claude Code login and CI has none. `.github/workflows/qa.yml` in this
-repo is a working example of both, including skipping the judgment steps when
-the secret is absent so a fork's pull request still gets the free tier.
+your local Claude Code login and CI has none; skip them when the secret is
+absent, so a fork's pull request still gets the free tier.
+
+This repository's own `.github/workflows/qa.yml` shows the caching and the
+key-gated steps, but it is not a template for yours: it builds agentic-qa from
+source and runs `node dist/cli.js`, where your repo runs `npx agentic-qa`. A
+tested GitHub Actions example for a consuming repo is on the
+[roadmap](ROADMAP.md).
 
 ## Checking the checker
 

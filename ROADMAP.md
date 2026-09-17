@@ -532,15 +532,20 @@ machine end to end before enumerating anything.
 ## Status
 
 **Read this first if you are new here.** The decisions above record what has been
-*settled*, which is not the same as what has been *built*. The delegation turn is
-partly implemented: the adapter seam, the corpus/gauntlet split and the coverage
-check exist, with three adapters: **eslint** (`sec.jwt.no-none-algorithm`,
-`test.no-conditional-assertion`), **dependency-cruiser**
-(`be.layer.no-db-client-outside-repository`) and **gitleaks**
-(`sec.no-aws-access-key-id`). Every other mechanical rule is still a regex, some
-of them on purpose (see Phase 2). opengrep runs the semgrep community rules as
-a gauntlet but claims no corpus rule yet, and `mutate` is still
-the hand-rolled version rather than Stryker. Everything in this section runs.
+*settled*, which is not the same as what has been *built*.
+
+Built: four scanner adapters — **eslint**, **dependency-cruiser**, **gitleaks**
+and **opengrep** running the semgrep community rules — behind one conductor with
+the corpus/gauntlet split and the coverage check, and the scanners npm cannot
+install provisioned automatically. Four corpus rules are delegated to them
+(`sec.jwt.no-none-algorithm`, `test.no-conditional-assertion`,
+`be.layer.no-db-client-outside-repository`, `sec.no-aws-access-key-id`); every
+other mechanical rule is still a pattern, some on purpose. opengrep claims no
+corpus rule yet. `mutate` is still the hand-rolled version rather than Stryker.
+
+Known not to be trustworthy yet, and first in Next: an agent can release a Stop
+block by writing its own `qa-ignore`, and no call site is tested against a real
+session. Everything listed below runs.
 
 **Done and verified.**
 
@@ -637,7 +642,7 @@ the hand-rolled version rather than Stryker. Everything in this section runs.
   where Claude Code ignores it, so the hook never actually blocked; see
   "Corrected: how Stop blocks".
 - Phase 1: opengrep running the semgrep community rules, the security and
-  configuration gauntlet (see "Phase 1 decisions" under Next). Scanners npm
+  configuration gauntlet (see "Phase 1: opengrep and the downloaded tools"). Scanners npm
   cannot install — opengrep, gitleaks — and the community rules are downloaded
   on first use into `~/.cache/agentic-qa/`, each pinned (binaries by version and
   SHA-256, rules by commit), with `agentic-qa setup` to do it ahead of time and
@@ -650,33 +655,305 @@ the hand-rolled version rather than Stryker. Everything in this section runs.
 
 ## Next
 
-### 1. Phase 1 follow-ups: our own AST rules, and claims on the gauntlet
+In priority order. The ordering principle: **the system has to be trustworthy
+and usable before the corpus grows.** Every item above rule-writing is about
+whether a gate can be believed, whether it can be configured, and whether it
+survives real use. Writing rules into a machine that cannot yet be trusted only
+produces more output nobody can rely on.
 
-The engine and the gauntlet are in (see Status). What is left of Phase 1:
+### 1. Close the escape hatch at the automatic call sites
 
-- **Rewrite the regex security rules as opengrep rules of our own**, shipped in
-  `config/` under this repo's license. Measured on a file built to trip regexes,
-  three AST rules got every case right where the patterns produced two false
-  positives (a `sha256` checksum in a file that also hashes a password, and
-  `httpOnly: false` inside a string) — and they matched Hono and Express alike,
-  which the community rules do not.
-- **Claim community rules in the corpus** where one covers a corpus rule
-  better, so its findings block: the public-ingress security group rule is the
-  first candidate, since the pattern would also flag an ordinary `0.0.0.0/0`
-  egress. Each claim needs the coverage test to run against the cached rules.
-- **Watch the Hono gap.** The community rules' taint tracking knows Express
-  request objects and not Hono's `c.req`: on a probe app, SQL injection, SSRF,
-  path traversal, open redirect and command injection were all found in Express
-  and all missed in the identical Hono code. Hono-aware source rules of our own
-  would recover most of that, and are probably the highest-value rules left to
-  write for the target stack.
-- **The escape hatch gets abused.** In the headless Stop test, an agent without
-  edit permission proposed silencing a real violation with a `qa-ignore` whose
-  reason was false ("this is test code"). See the open question on auditing it.
+**Observed, not hypothetical.** Once Stop really blocked, the first headless
+test showed an agent without edit permission proposing to silence a real
+violation in production code with `// qa-ignore: ... - this is test code`. The
+reason was false. A blocked agent's cheapest way out is a one-line comment, and
+nothing checks the reason. The gate that exists to hold agents contains a bypass
+that agents are the likeliest to use.
 
-### Phase 1 decisions
+Where an exception may come from, decided:
 
-Worth not relitigating:
+- **Automatic runs do not honour an uncommitted `qa-ignore`.** The per-edit hook
+  and Stop treat a `qa-ignore` that is not in `HEAD` — added or changed in the
+  working tree — as absent, so the finding still stands and still blocks.
+- **Those runs show every new one to the person**, through `systemMessage` at
+  Stop, so an attempted exception is visible rather than silent.
+- **An exception exists because a person chose it:** either they tell the agent
+  to add one, or they add it themselves. It takes effect once committed.
+- **Commit and CI honour committed exceptions**, as today. Staging and
+  committing is the act of approval.
+
+Not done, on purpose: tightening where the comment may sit. Pattern and scanner
+findings already require the same line or the one above; only judgment findings
+accept it anywhere in the file, because a judge's cited line is advisory. An
+agent can put a comment on the right line as easily as the wrong one, so
+placement was never the protection. Nor is asking a model whether the reason is
+honest: the reason is the very text the agent writes to persuade.
+
+**The honest limit.** An agent with an unrestricted shell can run `git commit`
+itself, so "committed" is only as strong as the agent's permission to commit.
+The recommended setup is a Claude Code permission rule that asks before
+`git commit`; document it with the feature. Whether stronger approval is worth
+building is an open question below.
+
+### 2. Verify every call site against a real session
+
+The Stop hook shipped unable to block, with passing tests, because the tests
+asserted the JSON it emitted rather than what Claude Code does with it. The only
+check that would have caught it was a real session. So each agent-facing call
+site gets a smoke test: a scratch repo with the hook installed by `init`, and a
+headless `claude -p` run on haiku, costing cents, asserting the behaviour rather
+than the payload:
+
+- Stop holds the turn on a corpus error, and the agent is told why.
+- Stop lets go on the second pass, and a person-facing message is produced.
+- Stop does not hold the turn for notes, or when it fails to run.
+- The per-edit hook's report reaches the agent. It demonstrably does — its
+  notes have arrived throughout development sessions — but nothing asserts it.
+- An uncommitted `qa-ignore` does not release a block (item 1).
+
+When it runs is part of the item: at minimum a documented `npm run smoke` before
+changing any hook output, and probably a CI job limited to changes under
+`src/hook.ts`, `src/stop.ts` and `src/init.ts`, when `ANTHROPIC_API_KEY` is
+present.
+
+### 3. One table for what runs where
+
+Today nothing defines it. It is spread across code and generated text:
+
+| call site | scanners | judgment tier + contracts | decided by |
+| --- | --- | --- | --- |
+| after each edit | fast only | no | `src/hook.ts`, via each adapter's `slow` flag |
+| Stop | all | yes, unless `--mechanical` | `src/stop.ts`, plus a CLI flag in settings |
+| commit | all | no | the command `init` writes into `hooks/pre-commit` |
+| CI | all | if the workflow adds `--llm` and `contracts` | whatever workflow a person writes |
+
+The README describes what that code happens to do, so the two can drift, and
+already did once: opengrep reached the commit hook, adding about 5s to every
+commit, without anyone deciding it should. It is also the knob stack profiles,
+framework gauntlets and a personal mode all need.
+
+The shape: one policy table in code, with defaults, keyed by call site (`edit`,
+`stop`, `commit`, `ci`), each naming the engine groups (`fast`, `slow`, or named
+engines), whether judgment and contracts run, and exceptions — `commit` skipping
+a slow engine, say. `qa.config.yaml` overrides any cell. The existing flags
+(`--mechanical`, `--llm`) become overrides of the same table rather than
+separate logic. A test checks the README's table against the defaults, so the
+documentation cannot drift from the code again.
+
+### 4. Use it for real on `orders-admin`
+
+`orders-admin` is on the current version, with the working Stop hook. Build an
+actual feature there with the hooks live, and record what nothing else can show:
+
+- **The judgment tier at Stop, now that it can block.** It runs the llm rules and
+  contract checks on every turn that changes code. Until the Stop fix its
+  verdicts could not hold a turn, so two things have never been measured: the
+  cost per turn, and how often a wrong verdict now holds the agent.
+- Which blocks were right, which were noise, and which notes anyone acted on.
+- Stop and per-edit latency during real work, not probes.
+- Whether the escape-hatch behaviour from item 1 recurs when the agent can edit.
+
+This is the calibration the fixtures cannot provide, and its findings will
+re-rank the items below it.
+
+### 5. CI documentation a consuming repo can follow
+
+`init` deliberately does not write CI (see "CI is documented, not generated"),
+but the steps have multiplied: install, `setup`, caching the tool cache, the
+mechanical tier, and the key-gated judgment steps. This repo's workflow is not a
+fair example — it builds agentic-qa from source and runs `node dist/cli.js`,
+where a consumer runs `npx agentic-qa`. Write a GitHub Actions example for a
+consuming repo into the README, and prove it by running it in a real consuming
+repo before documenting it; `orders-admin` has no remote, so that needs one.
+Other providers get the command list, not examples.
+
+### 6. Adoption on an existing repo: the baseline ratchet
+
+Half-solved by the severity split, and made more urgent by it. Pointing the
+gauntlet at an existing repo produces far more findings than 22 hand-written
+rules ever did, so the ratchet stops being a nicety. The corpus-blocks /
+gauntlet-warns rule is the first half of it; the second half is a committed
+snapshot and a count that must trend down.
+
+Turning a full corpus on an existing codebase produces thousands of violations
+and gets switched off the same afternoon. Snapshot the existing violations, fail
+only on new ones, and require the count to trend down. Every successful linter
+adoption works this way. It has to be designed in, not bolted on.
+
+### 7. Mutation grounding: adopt Stryker, then give it a trigger
+
+Two problems, and the survey solved one of them. **StrykerJS** is mature mutation
+testing for JS/TS with deterministic operators, `--incremental` backed by its own
+cache and git-like mutant matching, `--mutate` scoping down to line ranges, and a
+vitest runner with full support since v7. Our hand-rolled version is LLM-proposed
+mutations, strictly serial, vitest-only, with the subject found by following
+relative imports. For "do my tests catch bugs", Stryker wins outright.
+
+Keep the idea — a judgment is not evidence until an experiment says so — and let
+Stryker run the experiment. That also absorbs the old "second pass" item, which
+wanted other runners and occasional whole-suite runs; Stryker has both.
+
+The trigger question survives unchanged, because no tool answers it: `mutate`
+still runs nowhere but by hand. It is slow and rewrites real source files, so it
+cannot sit in a commit hook or fire after every agent edit, and running it on
+every push would be wasteful enough that someone would delete the job. The likely
+shape is a selection rather than a schedule: ground only the contracts whose
+verdict changed since the last run, which the committed ledger already knows.
+Needs a `--changed` selection over the ledger, and a decision about where it is
+invoked from.
+
+### 8. Packaging and configuration
+
+Mostly done. The package builds on install via `prepare`, ships `dist/` and the
+rules corpus, and has been verified by packing it, installing the tarball into a
+clean directory, and running the installed binary there: it loads the whole
+corpus and the shipped engine configs from inside the package and reports
+correctly. A consuming repo therefore holds
+only its own `qa.config.yaml` and `.qa/` ledgers.
+
+What is left:
+
+- **Publishing.** A deliberate decision, not a technical gap. The package is
+  marked `private` so it cannot go out by accident. Until then, install it as a
+  git or tarball dependency.
+- **A Claude Code plugin** for the agent-facing half: the hook, a review
+  subagent, slash commands, installable across repos from a marketplace.
+- **Versioning the rules corpus separately** from the tool, so rules can be
+  updated without shipping a new binary, and a repo can pin them.
+- **Stack profiles, framework gauntlets and a personal mode.** Designed in
+  outline under "Raised, not yet designed"; all three build on item 3's table.
+
+### 9. Speed: a long-lived process
+
+Not needed yet. A fresh process per hook call spends almost all its time
+loading: eslint takes about 500ms to load and 20ms to lint, opengrep seconds to
+load and milliseconds to scan. A long-lived process would bring a per-edit check
+near 50ms and let Stop run opengrep without its load cost. Worth it only once
+item 4 shows latency is actually hurting.
+
+### 10. Make the gauntlet robust where no engine covers the stack
+
+Separate from the corpus. The gauntlet is meant to be broad coverage for free,
+and it has holes wherever the engines and their plugins do not know the target
+stack:
+
+- **Hono.** The community rules' taint tracking knows Express request objects
+  and not Hono's `c.req`: on a probe app, SQL injection, SSRF, path traversal,
+  open redirect and command injection were all found in Express and all missed
+  in identical Hono code. Teaching opengrep Hono's sources — roughly half a dozen
+  rules mirroring the Express ones — recovers the whole class. Sonar's eslint
+  security rules have the same blind spot, and Hono has no eslint plugin.
+- **Framework plugins not enabled.** React hooks, `jsx-a11y`, Next.js: see
+  "Framework-specific gauntlets" under "Raised, not yet designed".
+- **Terraform** has only opengrep today; tflint and checkov remain candidates.
+
+The rules written here are gauntlet rules, not corpus promises: they widen what
+is noticed, and only a corpus claim (item 11) makes one block.
+
+### 11. The corpus, last
+
+Everything that writes, moves or retires a rule. Last because a rule is only
+worth as much as the machine that enforces it.
+
+#### Our own AST rules in place of the regex security rules
+
+Shipped in `config/` under this repository's license. On a file built to trip
+regexes, three opengrep rules got every case right where the patterns produced
+two false positives (a `sha256` checksum in a file that also hashes a password,
+and `httpOnly: false` inside a string), and matched Hono and Express alike.
+
+#### Corpus claims on community rules
+
+Where a community rule covers a corpus rule better, claim it so its findings
+block. The public-ingress security group rule is the first candidate, since the
+pattern also flags an ordinary `0.0.0.0/0` egress. Claims need the coverage test
+to run against the cached rules.
+
+#### Retire superseded rules and prove parity
+
+Delete the YAML rules an engine now covers, then re-run both fixture corpora and
+`orders-admin`. Each rule already has a violating case and a clean control, so
+parity is measured rather than asserted. Retire freely: these 22 were a test
+set, not a spec, and the fixtures stay as the harness that proves an adapter
+reports correctly.
+
+Parity findings already in hand. The lesson in all of them: **an engine rule
+with the right name is not evidence of the same coverage.** Read what it
+actually matches before retiring a pattern.
+
+- **Sonar's security rules do not know Hono.** `cookie-no-httponly`, `cors` and
+  `hashing` follow data into known sinks (`express`, `cors()`,
+  `cookie-session`). On an Express app they fire, as "make sure this is safe"
+  hotspots; on the same code written against `hono/cors` and `hono/cookie` they
+  fire on nothing. They also treat `sha256` on a password as fine, and missed
+  `res.cookie(..., { httpOnly: false })`. Our patterns caught every case in
+  both, and the community opengrep rules caught only one of them, so these stay
+  until our own AST rules replace them.
+- **`vitest/no-conditional-in-test` covers far less than its name.** It reports
+  only an `if` that is a direct child of the test callback: no nested `if`, no
+  `switch`, no ternary. The first attempt delegated `test.no-conditional-logic`
+  to it and quietly lost all three. The rule was split by hazard instead:
+  - `test.no-conditional-assertion` (error) — delegated to
+    `vitest/no-conditional-expect`, which follows an assertion into an `if`,
+    ternary, `switch` or `catch` at any depth. An assertion that may not run is
+    a test that can pass vacuously.
+  - `test.no-conditional-logic` (warn) — kept as a pattern, extended to `switch`
+    and ternaries. Branching in a test is a smell even when every assertion
+    runs; a ternary computing the expected value re-implements the code.
+  - `test.no-assertion-in-loop` (warn) — a new pattern. A loop is fine; a loop
+    *around an assertion* passes when it iterates zero times. The old regex
+    flagged every loop, setup loops included.
+- **Indentation is a weak proxy for "inside a test".** `test.no-conditional-logic`
+  flagged a type-narrowing guard in a helper defined inside a `describe`, which
+  is a common shape. It is a warning, and the helper moved to module scope, but
+  this is the pattern's ceiling: an AST rule scoped to test callbacks would not
+  make that mistake, and no existing one covers ternaries and nested ifs.
+- **Patterns match code inside strings.** The unit-test table for those two
+  patterns tripped them, so the cases live in `test/test-shape-cases.json`. The
+  loop rule then correctly caught the test iterating over its own tables.
+
+#### Classify the prose, then build the corpus from what is uncovered
+
+Rescoped twice, and the second rescope overshot. It began as "bulk-load the rules
+corpus"; delegation made much of that somebody else's job; then gap-first briefly
+demoted the prose to an afterthought, which would have left us structurally
+unable to notice the concepts no engine has an opinion about.
+
+The deliverable is a coverage pass over `~/code/full-stack-swe`: every concept
+classified as covered by an engine (with tool and rule id), judgment tier, human,
+or not a rule. Expect most of the real content to land in the judgment tier, and
+a meaningful fraction to be background knowledge rather than a checkable rule —
+a legitimate outcome, not a failure of the pass. The engines now exist, so
+"covered" can be verified rather than asserted and the coverage test can hold
+every claim. See "Two derivations, because only one of them can find an
+absence". The pack list — including the missing `infra` pack — is more likely to
+fall out of this pass than to precede it.
+
+The other two sources of rules stay live alongside it: house-specific convention
+that no public ruleset can know, and escaped defects — when a real bug ships, ask
+which rule should have caught it. That last one is the only source grounded in
+something that actually went wrong.
+
+Where the corpus is thin, measured rather than guessed. Of the original 22 rules:
+nine come from the auth and security chapter, three each from frontend, data and
+testing, two from infrastructure, one from backend architecture, one from the
+AI-era chapter. Five chapters have produced nothing at all: web fundamentals,
+repo hygiene, devops and delivery, observability and ops, performance and
+reliability. Infrastructure is the sharpest gap relative to its weight: the
+longest chapter in the source, with exactly one rule in the corpus matching a
+`.tf` file. An infra pack covering state, IAM scope, tagging, and the
+expand-contract discipline around managed databases is probably the most
+valuable single addition. Each new rule needs a violating fixture and a clean
+control.
+
+---
+
+## Decisions made while building the scanner tier
+
+Recorded from the build, so they are not relitigated.
+
+### Phase 1: opengrep and the downloaded tools
+
 
 - **Opengrep, not semgrep, as the engine.** Both are LGPL and run the same rules;
   on the probe app opengrep matched semgrep's findings and added one, in less
@@ -705,7 +982,7 @@ Worth not relitigating:
   shows the fast engines' notes; Stop shows the slow ones' to the person via
   `systemMessage`, and to the agent only when it is being held anyway.
 
-Decided while building the eslint half, and worth not relitigating:
+### Phase 0: eslint, dependency-cruiser, gitleaks
 
 - **The eslint config ships with the tool** (`config/eslint.config.js`), for the
   same reason the corpus does, and plugins resolve from this package's own
@@ -721,161 +998,10 @@ Decided while building the eslint half, and worth not relitigating:
   tsconfig the checked repo may not have, and a program build per run.
 - **Gauntlet noise is already measurable.** On this repo: 31 notes, including a
   real unused import, and `sonarjs/no-os-command-from-path` on every
-  `execFileSync("git")`, which is noise here. The answer is the ratchet (item 5)
+  `execFileSync("git")`, which is noise here. The answer is the ratchet (item 6)
   and trimming the preset deliberately, not filtering output to the corpus.
 
-### 3. Phase 2: retire the superseded rules and prove parity
-
-Delete the YAML rules an engine now covers, then re-run both fixture corpora and
-`orders-admin`. This is exactly what `fixtures/rules` was built for: each rule
-already has a violating case and a clean control, so parity is measurable rather
-than asserted.
-
-Retire freely rather than ceremonially. These 22 are a test set, not a spec, so
-a rule whose fixture an engine does not happen to catch is not necessarily worth
-keeping — the question is whether anyone would have written that rule on
-purpose. The fixtures stay either way, as the harness that proves an adapter
-reports correctly.
-
-Parity findings already in hand from the eslint half. The lesson in both: an
-engine rule with the right name is not evidence of the same coverage. Read what
-it actually matches before retiring a pattern.
-
-- **Sonar's security rules do not know Hono.** `cookie-no-httponly`, `cors` and
-  `hashing` follow data into known sinks (`express`, `cors()`,
-  `cookie-session`). On an Express app they fire, as "make sure this is safe"
-  hotspots; on the same code written against `hono/cors` and `hono/cookie` —
-  the target stack — they fire on nothing. They also treat `sha256` on a
-  password as fine, and missed `res.cookie(..., { httpOnly: false })`. Our
-  patterns caught every case in both. They stay; semgrep is the next candidate.
-- **`vitest/no-conditional-in-test` covers far less than its name.** It reports
-  only an `if` that is a direct child of the test callback: no nested `if`, no
-  `switch`, no ternary. The first attempt delegated `test.no-conditional-logic`
-  to it and quietly lost all three. The rule was split by hazard instead:
-  - `test.no-conditional-assertion` (error) — delegated to
-    `vitest/no-conditional-expect`, which follows an assertion into an `if`,
-    ternary, `switch` or `catch` at any depth. An assertion that may not run is
-    a test that can pass vacuously.
-  - `test.no-conditional-logic` (warn) — kept as a pattern, extended to `switch`
-    and ternaries. Branching in a test is a smell even when every assertion
-    runs; a ternary computing the expected value re-implements the code.
-  - `test.no-assertion-in-loop` (warn) — a new pattern. A loop is fine; a loop
-    *around an assertion* passes when it iterates zero times. The old regex
-    flagged every loop, setup loops included.
-- **Indentation is a weak proxy for "inside a test".** `test.no-conditional-logic`
-  flagged a type-narrowing guard in a helper defined inside a `describe`, which
-  is a common shape. It is a warning, and the helper moved to module scope, but
-  this is the pattern's ceiling: an AST rule scoped to test callbacks would not
-  make that mistake, and none exists that covers ternaries and nested ifs.
-- **Patterns match code inside strings.** The unit-test table for those two
-  patterns tripped them, so the cases live in `test/test-shape-cases.json`. The
-  loop rule then correctly caught the test iterating over its own tables.
-
-Terraform follows the same path: tflint and checkov, never hand-written regex.
-
-### 4. Mutation grounding: adopt Stryker, then give it a trigger
-
-Two problems, and the survey solved one of them. **StrykerJS** is mature mutation
-testing for JS/TS with deterministic operators, `--incremental` backed by its own
-cache and git-like mutant matching, `--mutate` scoping down to line ranges, and a
-vitest runner with full support since v7. Our hand-rolled version is LLM-proposed
-mutations, strictly serial, vitest-only, with the subject found by following
-relative imports. For "do my tests catch bugs", Stryker wins outright.
-
-Keep the idea — a judgment is not evidence until an experiment says so — and let
-Stryker run the experiment. That also absorbs the old "second pass" item, which
-wanted other runners and occasional whole-suite runs; Stryker has both.
-
-The trigger question survives unchanged, because no tool answers it: `mutate`
-still runs nowhere but by hand. It is slow and rewrites real source files, so it
-cannot sit in a commit hook or fire after every agent edit, and running it on
-every push would be wasteful enough that someone would delete the job. The likely
-shape is a selection rather than a schedule: ground only the contracts whose
-verdict changed since the last run, which the committed ledger already knows.
-Needs a `--changed` selection over the ledger, and a decision about where it is
-invoked from.
-
-### 5. Adoption on an existing repo: the baseline ratchet
-
-Half-solved by the severity split, and made more urgent by it. Pointing the
-gauntlet at an existing repo produces far more findings than 22 hand-written
-rules ever did, so the ratchet stops being a nicety. The corpus-blocks /
-gauntlet-warns rule is the first half of it; the second half is a committed
-snapshot and a count that must trend down.
-
-Turning a full corpus on an existing codebase produces thousands of violations
-and gets switched off the same afternoon. Snapshot the existing violations, fail
-only on new ones, and require the count to trend down. Every successful linter
-adoption works this way. It has to be designed in, not bolted on.
-
-### 6. Packaging
-
-Mostly done. The package builds on install via `prepare`, ships `dist/` and the
-rules corpus, and has been verified by packing it, installing the tarball into a
-clean directory, and running the installed binary there: it loads all 22 rules
-from inside the package and reports correctly. A consuming repo therefore holds
-only its own `qa.config.yaml` and `.qa/` ledgers.
-
-A CI workflow template now exists in `.github/workflows/qa.yml`. Note the
-judgment tiers need `ANTHROPIC_API_KEY` there, because `claude -p` rides on
-Claude Code's OAuth locally and CI has none.
-
-What is left:
-
-- **Publishing.** A deliberate decision, not a technical gap. The package is
-  marked `private` so it cannot go out by accident. Until then, install it as a
-  git or tarball dependency.
-- **A Claude Code plugin** for the agent-facing half: the hook, a review
-  subagent, slash commands, installable across repos from a marketplace.
-- **Versioning the rules corpus separately** from the tool, so rules can be
-  updated without shipping a new binary, and a repo can pin them.
-
-### 7. Classify the prose, then build the corpus from what is uncovered
-
-Rescoped twice, and the second rescope overshot. It began as "bulk-load the rules
-corpus"; delegation made much of that somebody else's job; then gap-first briefly
-demoted the prose to an afterthought, which would have left us structurally
-unable to notice the concepts no engine has an opinion about.
-
-The deliverable is a coverage pass over `~/code/full-stack-swe`: every concept
-classified as covered by an engine (with tool and rule id), judgment tier, human,
-or not a rule. Expect most of the real content to land in the judgment tier, and
-expect a meaningful fraction to be background knowledge rather than a checkable
-rule — that is a legitimate outcome, not a failure of the pass.
-
-Run it after Phase 0, so "covered" can be verified rather than asserted and the
-coverage test can hold every claim it makes. See "Two derivations, because only
-one of them can find an absence".
-
-The other two sources of rules stay live alongside it: house-specific convention
-that no public ruleset can know, and escaped defects — when a real bug ships, ask
-which rule should have caught it. That last one is the only source grounded in
-something that actually went wrong.
-
-The measured holes below still describe where the corpus is thin. The answer to
-some is now "enable a ruleset"; the answer to the rest is a judgment-tier rule
-that nothing off the shelf provides.
-
-Where the holes are, measured rather than guessed. Of 22 rules: nine come from
-the auth and security chapter, three each from frontend, data and testing, two
-from infrastructure, one from backend architecture, one from the AI-era chapter.
-Five chapters have produced nothing at all: web fundamentals, repo hygiene,
-devops and delivery, observability and ops, performance and reliability.
-
-Infrastructure is the sharpest gap relative to its weight. It is the longest
-chapter in the source and it has yielded two rules, both filed under security,
-with exactly one rule in the whole corpus matching a `.tf` file. An infra pack
-covering state, IAM scope, tagging, and the expand-contract discipline around
-managed databases is probably the most valuable single addition, given the
-target stack runs on Terraform.
-
-Once the ratchet exists, convert the rest of
-`~/code/full-stack-swe` into structured rules. Each one needs a violating
-fixture and a clean control. Expect a meaningful fraction of the prose to be
-background knowledge rather than checkable rules; that part does not belong in
-the corpus.
-
-### 8. The judgment tier is the part with no free incumbent
+### The judgment tier is the part with no free incumbent
 
 Not a task so much as a reminder of where the remaining original work is, now
 that the mechanical tier is delegated.
@@ -911,9 +1037,13 @@ designed.
 - **Escaped-defect log.** When a real bug ships, ask which rule should have
   caught it. That is the feedback loop that makes the corpus earn its keep
   instead of just accreting. Worth building once there is a real repo.
-- **How `qa-ignore` gets audited.** The escape hatch is necessary, but a repo
-  where it spreads unchecked has quietly turned the rules off. Counting them and
-  watching the trend is probably enough.
+- **How `qa-ignore` gets audited, and who approves one.** Item 1 settles what
+  automatic runs honour: only committed exceptions. Two things stay open. A repo
+  where exceptions accumulate has quietly switched its rules off, so counting
+  them and watching the trend is probably still needed, in CI and earlier. And
+  approval is only as strong as the agent's permission to commit; whether a
+  stronger channel is worth building — a person-only approval the agent cannot
+  perform through its shell — is undecided.
 
 ### Raised, not yet designed
 
@@ -956,6 +1086,6 @@ both — but none of them is settled.
   observability and ops, performance and reliability). Infrastructure has no
   pack: its one Terraform rule, `sec.no-world-open-security-group`, is filed
   under security. Creating empty packs now would fix a taxonomy before the
-  classification pass (item 7) has shown what the concepts actually are; the
+  classification pass (item 11) has shown what the concepts actually are; the
   pack list is more likely to fall out of that pass than to precede it. An
   `infra` pack is the one that is clearly missing already.
