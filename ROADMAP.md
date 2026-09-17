@@ -267,7 +267,7 @@ unrequested change this tool objects to. It is also a speed bump rather than a
 lock, since it matches how a command starts. Whether stronger approval is worth
 building is an open question.
 
-Two known edges, accepted for now and worth watching in real use (item 3). A
+Two known edges, accepted for now and worth watching in real use (item 2). A
 renamed file has no committed exceptions until the rename is committed. And an
 exception a person asked the agent to add is listed as refused on every turn
 until it is committed, which could read as nagging.
@@ -612,9 +612,7 @@ install provisioned automatically. Four corpus rules are delegated to them
 other mechanical rule is still a pattern, some on purpose. opengrep claims no
 corpus rule yet. `mutate` is still the hand-rolled version rather than Stryker.
 
-Known not to be trustworthy yet, and first in Next: no call site is tested
-against a real session by anything that runs repeatably. Everything listed below
-runs.
+Everything listed below runs. First in Next is one table for what runs where.
 
 **Done and verified.**
 
@@ -722,6 +720,20 @@ runs.
 - The escape hatch closed at the automatic call sites: the per-edit hook and
   Stop honour only a `qa-ignore` committed in `HEAD`, and show every refused one.
   See "Only a person makes an exception, and committing is how".
+- Real-session smoke tests for the agent-facing call sites (`npm run smoke`,
+  `smoke/hooks.smoke.ts`). Five headless haiku sessions run in parallel against
+  throwaway repos whose hooks `init` wrote, pointed at this checkout's build, and
+  assert on the transcript rather than the payload: Stop holds the turn on a
+  corpus error and the agent receives the reason; the second pass lets go and
+  the person is told; notes and a failure to run never hold the turn; an
+  uncommitted `qa-ignore` releases nothing and the person sees it; the per-edit
+  hook's report reaches the agent, proven by the agent repeating a rule id it
+  could not otherwise know. About 30s and $0.13 a run. Shown to fail: with
+  `decision` nested back inside `hookSpecificOutput`, the three tests that need
+  Stop to hold the turn fail. Local only, deliberately: CI would need an API key
+  and bill every push, which is worth it only if a hook change ever ships
+  without a run. Stop runs `--mechanical` there, so the hook makes no model
+  calls of its own; the judgment tiers leave through the same output code.
 
 ---
 
@@ -733,32 +745,7 @@ whether a gate can be believed, whether it can be configured, and whether it
 survives real use. Writing rules into a machine that cannot yet be trusted only
 produces more output nobody can rely on.
 
-### 1. Verify every call site against a real session
-
-The Stop hook shipped unable to block, with passing tests, because the tests
-asserted the JSON it emitted rather than what Claude Code does with it. The only
-check that would have caught it was a real session. So each agent-facing call
-site gets a smoke test: a scratch repo with the hook installed by `init`, and a
-headless `claude -p` run on haiku, costing cents, asserting the behaviour rather
-than the payload:
-
-- Stop holds the turn on a corpus error, and the agent is told why.
-- Stop lets go on the second pass, and a person-facing message is produced.
-- Stop does not hold the turn for notes, or when it fails to run.
-- The per-edit hook's report reaches the agent. It demonstrably does — its
-  notes have arrived throughout development sessions — but nothing asserts it.
-- An uncommitted `qa-ignore` does not release a block, and the person is shown
-  the attempt.
-
-The probe hooks that exposed the Stop bug are in
-`fixtures/probes/stop-hook-shapes`, with the recipe.
-
-When it runs is part of the item: at minimum a documented `npm run smoke` before
-changing any hook output, and probably a CI job limited to changes under
-`src/hook.ts`, `src/stop.ts` and `src/init.ts`, when `ANTHROPIC_API_KEY` is
-present.
-
-### 2. One table for what runs where
+### 1. One table for what runs where
 
 Today nothing defines it. It is spread across code and generated text:
 
@@ -801,7 +788,7 @@ The shape is three layers, each owned by whoever actually knows the answer:
 separate logic. A test checks the README's table against the defaults, so the
 documentation cannot drift from the code again.
 
-### 3. Use it for real on `orders-admin`
+### 2. Use it for real on `orders-admin`
 
 `orders-admin` is on the current version, with the working Stop hook. Build an
 actual feature there with the hooks live, and record what nothing else can show:
@@ -820,7 +807,7 @@ actual feature there with the hooks live, and record what nothing else can show:
 This is the calibration the fixtures cannot provide, and its findings will
 re-rank the items below it.
 
-### 4. CI documentation a consuming repo can follow
+### 3. CI documentation a consuming repo can follow
 
 `init` deliberately does not write CI (see "CI is documented, not generated"),
 but the steps have multiplied: install, `setup`, caching the tool cache, the
@@ -831,7 +818,7 @@ consuming repo into the README, and prove it by running it in a real consuming
 repo before documenting it; `orders-admin` has no remote, so that needs one.
 Other providers get the command list, not examples.
 
-### 5. Adoption on an existing repo: the baseline ratchet
+### 4. Adoption on an existing repo: the baseline ratchet
 
 Half-solved by the severity split, and made more urgent by it. Pointing the
 gauntlet at an existing repo produces far more findings than 22 hand-written
@@ -844,7 +831,7 @@ and gets switched off the same afternoon. Snapshot the existing violations, fail
 only on new ones, and require the count to trend down. Every successful linter
 adoption works this way. It has to be designed in, not bolted on.
 
-### 6. Mutation grounding: adopt Stryker, then give it a trigger
+### 5. Mutation grounding: adopt Stryker, then give it a trigger
 
 Two problems, and the survey solved one of them. **StrykerJS** is mature mutation
 testing for JS/TS with deterministic operators, `--incremental` backed by its own
@@ -866,7 +853,7 @@ verdict changed since the last run, which the committed ledger already knows.
 Needs a `--changed` selection over the ledger, and a decision about where it is
 invoked from.
 
-### 7. Packaging and configuration
+### 6. Packaging and configuration
 
 Mostly done. The package builds on install via `prepare`, ships `dist/` and the
 rules corpus, and has been verified by packing it, installing the tarball into a
@@ -885,17 +872,17 @@ What is left:
 - **Versioning the rules corpus separately** from the tool, so rules can be
   updated without shipping a new binary, and a repo can pin them.
 - **Stack profiles, framework gauntlets and a personal mode.** Designed in
-  outline under "Raised, not yet designed"; all three build on item 2's table.
+  outline under "Raised, not yet designed"; all three build on item 1's table.
 
-### 8. Speed: a long-lived process
+### 7. Speed: a long-lived process
 
 Not needed yet. A fresh process per hook call spends almost all its time
 loading: eslint takes about 500ms to load and 20ms to lint, opengrep seconds to
 load and milliseconds to scan. A long-lived process would bring a per-edit check
 near 50ms and let Stop run opengrep without its load cost. Worth it only once
-item 3 shows latency is actually hurting.
+item 2 shows latency is actually hurting.
 
-### 9. Make the gauntlet robust where no engine covers the stack
+### 8. Make the gauntlet robust where no engine covers the stack
 
 Separate from the corpus. The gauntlet is meant to be broad coverage for free,
 and it has holes wherever the engines and their plugins do not know the target
@@ -914,9 +901,9 @@ stack:
 The probe app behind these measurements is `fixtures/probes/gauntlet-hono-express`.
 
 The rules written here are gauntlet rules, not corpus promises: they widen what
-is noticed, and only a corpus claim (item 10) makes one block.
+is noticed, and only a corpus claim (item 9) makes one block.
 
-### 10. The corpus, last
+### 9. The corpus, last
 
 Everything that writes, moves or retires a rule. Last because a rule is only
 worth as much as the machine that enforces it.
@@ -1066,7 +1053,7 @@ Recorded from the build, so they are not relitigated.
   tsconfig the checked repo may not have, and a program build per run.
 - **Gauntlet noise is already measurable.** On this repo: 31 notes, including a
   real unused import, and `sonarjs/no-os-command-from-path` on every
-  `execFileSync("git")`, which is noise here. The answer is the ratchet (item 5)
+  `execFileSync("git")`, which is noise here. The answer is the ratchet (item 4)
   and trimming the preset deliberately, not filtering output to the corpus.
 
 ### The judgment tier is the part with no free incumbent
@@ -1119,6 +1106,15 @@ Recorded so they are thought about deliberately rather than discovered late.
 Each notes where it is likely to be decided — `init` flags, `qa.config.yaml`, or
 both — but none of them is settled.
 
+- **A check that a consuming repo's wiring works (`agentic-qa doctor`).** The
+  smoke tests prove the tool's hooks behave; nothing proves a given repo is
+  wired to a copy that has the commands its hooks call. `orders-admin` twice had
+  hooks calling a command its installed version lacked — `install-hooks`, then
+  `stop` — while everything looked installed. A `doctor` would run each
+  configured call site's command against the installed binary and say which do
+  not exist or fail. Distinct from the smoke tests: repo setup, not tool
+  behaviour.
+
 - **Other stacks.** Everything assumes TypeScript, Hono, React, Postgres and
   Terraform: the shipped engine configs, the file extensions adapters handle,
   the patterns. Supporting another language or framework cleanly probably means
@@ -1154,6 +1150,6 @@ both — but none of them is settled.
   observability and ops, performance and reliability). Infrastructure has no
   pack: its one Terraform rule, `sec.no-world-open-security-group`, is filed
   under security. Creating empty packs now would fix a taxonomy before the
-  classification pass (item 10) has shown what the concepts actually are; the
+  classification pass (item 9) has shown what the concepts actually are; the
   pack list is more likely to fall out of that pass than to precede it. An
   `infra` pack is the one that is clearly missing already.

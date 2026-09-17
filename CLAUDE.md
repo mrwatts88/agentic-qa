@@ -19,6 +19,7 @@ behave on code that was not written to be a test case.
 ```
 npm run build                 # tsc -> dist/
 npm test                      # vitest (fixtures/ excluded)
+npm run smoke                 # real headless Claude sessions against the hooks, ~$0.13
 node dist/cli.js contracts    # judge tests against their descriptions
 node dist/cli.js mutate       # break the code and check the tests notice
 node dist/cli.js eval         # score the contract judge (not the rules)
@@ -163,8 +164,10 @@ grounding needs.
   notes and a failure to run all go to the person as `systemMessage`.
 - **A hook contract is verified by running a real session.** Reading the docs
   produced the nested-`decision` bug, and tests that assert the emitted JSON
-  only prove it was emitted. Check a change to hook output with headless
-  `claude -p` against a scratch repo whose hook uses it.
+  only prove it was emitted. Run `npm run smoke` before committing any change
+  to what `src/hook.ts`, `src/stop.ts` or the settings `init` writes emit, and
+  add a scenario to `smoke/hooks.smoke.ts` for any new behaviour. Their inputs
+  live in `fixtures/smoke/`, because they break rules on purpose.
 - **Stop runs the ladder at runtime: mechanical first, and no judgment pass at
   all when a pattern already found an error.** Paying a model to judge code
   that fails a linter-tier rule is the same waste the enforcement ladder exists
@@ -304,8 +307,10 @@ grounding needs.
   for `--no-verify`, loosening a rule, or narrowing a scope to make a finding go
   away.
 
-- **Evaluate before building.** Before a large piece of work, lay out the
-  options, update ROADMAP in priority order, and agree the next step. The
+- **Evaluate before building.** Before a large piece of work, update ROADMAP
+  in priority order and agree *what* to work on next. *How* to build it is
+  Claude's call: design it, make the decisions, and report them. Do not ask the
+  owner to choose between implementation options. The
   system has to be trustworthy and usable before the rules corpus grows, so
   rule-writing comes last.
 - **Keep the README understandable.** It is for someone setting this up, not a

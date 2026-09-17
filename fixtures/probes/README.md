@@ -9,7 +9,7 @@ tool never checks this code as if it were ours.
 The same vulnerabilities written twice, once against Hono and once against
 Express, plus a React component, a GitHub Actions workflow, a Dockerfile and
 Terraform. Used to measure the semgrep community rules; starting point for
-roadmap item 9 (the Hono gap).
+roadmap item 8 (the Hono gap).
 
     opengrep scan --json --config ~/.cache/agentic-qa/semgrep-rules/<commit>/javascript \
       --config .../typescript --config .../terraform --config .../dockerfile \
@@ -25,7 +25,7 @@ injection and the React open redirect and `dangerouslySetInnerHTML` all found.
 Three hand-written opengrep rules (`rules.yaml`) against the regex versions of
 the same corpus rules. `tricky.ts` is built to trip regexes: a CORS wildcard
 split across lines, a `sha256` checksum in a file that also hashes a password,
-and `httpOnly: false` inside a string. Starting point for roadmap item 10.
+and `httpOnly: false` inside a string. Starting point for roadmap item 9.
 
     opengrep scan --json --config rules.yaml hono.ts express.ts tricky.ts
 
@@ -35,7 +35,8 @@ Express alike; the regex rules produced two false positives in `tricky.ts`.
 ## stop-hook-shapes
 
 The four Stop hook outputs tested against a real headless session, which found
-that `agentic-qa stop` had never blocked. Starting point for roadmap item 1.
+that `agentic-qa stop` had never blocked. The repeatable version of this is now
+`npm run smoke`; these stay as the record of what each shape does.
 To reproduce one: in a scratch directory, write `.claude/settings.json` with a
 Stop hook running `node <file>`, then
 

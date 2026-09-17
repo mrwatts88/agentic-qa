@@ -1,0 +1,290 @@
+import { describe, it, expect, beforeAll } from "vitest";
+import { execFileSync, spawn } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { runInit } from "../src/init";
+
+/**
+ * Real-session smoke tests for the agent-facing call sites.
+ *
+ * The Stop hook once shipped unable to block, with passing unit tests, because
+ * those tests asserted the JSON it emitted rather than what Claude Code does
+ * with it. These run headless `claude -p` sessions on haiku against throwaway
+ * repos wired to this checkout's `dist/`, and assert on the session transcript:
+ * whether the turn was held, what the agent was told, what the person saw.
+ *
+ * Run with `npm run smoke`: five sessions in parallel, about 30s and $0.13,
+ * using whatever login `claude` already has. Not part of `npm test`, and not in
+ * CI. Transcripts land in `.qa/tmp/smoke/`.
+ *
+ * Shown to fail: with `decision` nested back inside `hookSpecificOutput`, the
+ * bug these exist for, the three tests that need Stop to hold the turn fail.
+ *
+ * Stop runs with `--mechanical`: the judgment tiers would make model calls from
+ * inside the hook, adding cost and nondeterminism, and they leave through the
+ * same output code as everything else.
+ */
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const CLI = join(ROOT, "dist", "cli.js");
+const TRANSCRIPTS = join(ROOT, ".qa", "tmp", "smoke");
+
+/**
+ * The code each session starts from lives in fixtures/smoke, not here. It
+ * breaks rules on purpose, and fixtures/ is where this repo keeps code like
+ * that, out of reach of its own hooks.
+ */
+function fixture(name: string): string {
+  return readFileSync(join(ROOT, "fixtures", "smoke", name), "utf8");
+}
+
+/** Breaks a corpus rule. */
+const VIOLATION = fixture("session.ts");
+/** Draws only a note from a slow scanner, which never blocks. */
+const NOTE = fixture("app.ts");
+const RULE = "fe.storage.no-token-in-local-storage";
+
+/** No way to change code, so a held turn cannot be resolved by fixing it. */
+const READ_ONLY = ["--disallowedTools", "Edit,Write,Bash,NotebookEdit"];
+
+type Event = Record<string, any>;
+
+interface Repo {
+  files: Record<string, string>;
+  hooks: { edit?: boolean; stop?: boolean };
+}
+
+/**
+ * The hooks come from `init`, pointed at this checkout, so a session also proves
+ * the wiring `init` writes works — matcher, event names, placement. Two edits
+ * after: Stop gains `--mechanical`, and a scenario drops the hook it is not
+ * about, so one hook's output never muddies another's assertions.
+ */
+function makeRepo(name: string, repo: Repo): string {
+  const dir = mkdtempSync(join(tmpdir(), `agentic-qa-smoke-${name}-`));
+  execFileSync("git", ["init", "-q"], { cwd: dir });
+
+  runInit(dir, `node "${CLI}"`, { gitHook: false, claudeHook: true, force: false });
+  const path = join(dir, ".claude", "settings.json");
+  const settings = JSON.parse(readFileSync(path, "utf8"));
+  const stop = settings.hooks.Stop[0].hooks[0];
+  stop.command = `${stop.command} --mechanical`;
+  if (!repo.hooks.edit) delete settings.hooks.PostToolUse;
+  if (!repo.hooks.stop) delete settings.hooks.Stop;
+  writeFileSync(path, JSON.stringify(settings, null, 2));
+
+  for (const [path, contents] of Object.entries(repo.files)) {
+    mkdirSync(dirname(join(dir, path)), { recursive: true });
+    writeFileSync(join(dir, path), contents);
+  }
+  return dir;
+}
+
+/**
+ * One headless session. `--setting-sources project` keeps the person's own
+ * hooks and settings out, so only the hooks under test run. Claude Code's
+ * variables from any session this is launched inside are dropped too: a
+ * leftover CLAUDE_PROJECT_DIR would point the hook at the wrong repo.
+ */
+function runSession(name: string, repo: Repo, prompt: string, tools: string[]): Promise<Event[]> {
+  const cwd = makeRepo(name, repo);
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => !key.startsWith("CLAUDE")),
+  );
+
+  const args = [
+    "-p", prompt,
+    "--model", "haiku",
+    "--output-format", "stream-json",
+    "--verbose",
+    "--include-hook-events",
+    "--setting-sources", "project",
+    "--no-session-persistence",
+    "--max-budget-usd", "0.25",
+    ...tools,
+  ];
+
+  return new Promise((done, fail) => {
+    const child = spawn("claude", args, { cwd, env, stdio: ["ignore", "pipe", "pipe"] });
+    let out = "";
+    let err = "";
+    child.stdout.on("data", (d) => (out += d));
+    child.stderr.on("data", (d) => (err += d));
+    child.on("error", fail);
+    child.on("close", (code) => {
+      mkdirSync(TRANSCRIPTS, { recursive: true });
+      // The transcript is what a failure is debugged from; the repo is not.
+      writeFileSync(join(TRANSCRIPTS, `${name}.jsonl`), out);
+      rmSync(cwd, { recursive: true, force: true });
+      if (code !== 0) return fail(new Error(`claude exited ${code}: ${err.slice(0, 500)}`));
+      done(out.split("\n").filter(Boolean).map((line) => JSON.parse(line)));
+    });
+  });
+}
+
+/** What each hook printed, in order. */
+function hookOutputs(events: Event[], hookEvent: string): string[] {
+  return events
+    .filter((e) => e.subtype === "hook_response" && e.hook_event === hookEvent)
+    .map((e) => String(e.output ?? ""));
+}
+
+function payloads(events: Event[], hookEvent: string): Event[] {
+  return hookOutputs(events, hookEvent)
+    .filter((o) => o.trim().startsWith("{"))
+    .map((o) => JSON.parse(o));
+}
+
+/** What the agent was handed when Stop held the turn. */
+function stopFeedback(events: Event[]): string[] {
+  return events
+    .filter((e) => e.type === "user" && Array.isArray(e.message?.content))
+    .flatMap((e) => e.message.content)
+    .map((c: Event) => (typeof c.text === "string" ? c.text : ""))
+    .filter((text: string) => text.startsWith("Stop hook feedback"));
+}
+
+/** What Claude Code showed the person. */
+function shownToPerson(events: Event[]): string {
+  return events
+    .filter((e) => e.subtype === "informational")
+    .map((e) => String(e.content ?? ""))
+    .join("\n");
+}
+
+function agentSpokeAfterFeedback(events: Event[]): boolean {
+  const feedback = events.findIndex(
+    (e) => e.type === "user" && JSON.stringify(e.message?.content ?? "").includes("Stop hook feedback"),
+  );
+  return feedback !== -1 && events.slice(feedback).some((e) => e.type === "assistant");
+}
+
+function ended(events: Event[]): boolean {
+  return events.some((e) => e.type === "result" && e.subtype === "success");
+}
+
+const sessions: Record<string, Promise<Event[]>> = {};
+
+beforeAll(() => {
+  execFileSync("npm", ["run", "build"], { cwd: ROOT, stdio: "ignore" });
+
+  // All at once: they are independent, and each takes tens of seconds.
+  sessions.violation = runSession(
+    "violation",
+    { files: { "session.ts": VIOLATION }, hooks: { stop: true } },
+    "Say hello in one word.",
+    READ_ONLY,
+  );
+  sessions.exception = runSession(
+    "exception",
+    {
+      files: { "session.ts": VIOLATION.replace("  localStorage", `  // qa-ignore: ${RULE} - this is test code\n  localStorage`) },
+      hooks: { stop: true },
+    },
+    "Say hello in one word.",
+    READ_ONLY,
+  );
+  sessions.notes = runSession(
+    "notes",
+    {
+      files: { "app.ts": NOTE },
+      hooks: { stop: true },
+    },
+    "Say hello in one word.",
+    READ_ONLY,
+  );
+  sessions.broken = runSession(
+    "broken",
+    {
+      files: {
+        "qa.config.yaml": 'rules:\n  paths: ["local-rules"]\n',
+        // No top-level `pack`, which the loader refuses.
+        "local-rules/broken.yaml": "rules: []\n",
+        "session.ts": VIOLATION,
+      },
+      hooks: { stop: true },
+    },
+    "Say hello in one word.",
+    READ_ONLY,
+  );
+  sessions.edit = runSession(
+    "edit",
+    { files: {}, hooks: { edit: true } },
+    [
+      "Use the Write tool to create session.ts with exactly the contents between the markers.",
+      "Then, if you received any feedback about that file after writing it, reply with",
+      "the rule id it named, which appears in square brackets. Otherwise reply NONE.",
+      "",
+      "---BEGIN---",
+      VIOLATION.trimEnd(),
+      "---END---",
+    ].join("\n"),
+    ["--allowedTools", "Write"],
+  );
+
+  // Swallowed here so an unawaited rejection does not fail the whole file;
+  // each test awaits its own session and fails on its own.
+  for (const s of Object.values(sessions)) s.catch(() => undefined);
+}, 60_000);
+
+describe("Stop", () => {
+  it("holds the turn on a corpus error and tells the agent why", async () => {
+    const events = await sessions.violation;
+
+    expect(payloads(events, "Stop")[0]?.decision).toBe("block");
+    expect(stopFeedback(events).join("\n")).toContain(RULE);
+    expect(agentSpokeAfterFeedback(events)).toBe(true);
+  });
+
+  it("lets the turn end on the second pass and tells the person", async () => {
+    const events = await sessions.violation;
+    const stops = payloads(events, "Stop");
+
+    expect(stops).toHaveLength(2);
+    expect(stops[1].decision).toBeUndefined();
+    expect(shownToPerson(events)).toContain("still stand");
+    expect(ended(events)).toBe(true);
+  });
+
+  it("does not hold the turn for scanner notes, and shows them to the person", async () => {
+    const events = await sessions.notes;
+
+    expect(stopFeedback(events)).toEqual([]);
+    expect(payloads(events, "Stop")).toHaveLength(1);
+    expect(shownToPerson(events)).toContain("never block");
+    expect(ended(events)).toBe(true);
+  });
+
+  it("does not hold the turn when it cannot run, and says so", async () => {
+    const events = await sessions.broken;
+
+    expect(stopFeedback(events)).toEqual([]);
+    expect(shownToPerson(events)).toContain("could not run");
+    expect(ended(events)).toBe(true);
+  });
+
+  it("is not released by an uncommitted qa-ignore, and shows the person the attempt", async () => {
+    const events = await sessions.exception;
+
+    expect(payloads(events, "Stop")[0]?.decision).toBe("block");
+    expect(stopFeedback(events).join("\n")).toContain("not committed");
+    expect(shownToPerson(events)).toContain(`session.ts:2 qa-ignore for ${RULE}`);
+  });
+});
+
+describe("the per-edit hook", () => {
+  /**
+   * Its report reaches the agent only as context, which the transcript does not
+   * show. So the agent is asked to repeat the rule id, which it cannot know any
+   * other way.
+   */
+  it("gets its report to the agent", async () => {
+    const events = await sessions.edit;
+    const result = events.find((e) => e.type === "result");
+
+    expect(hookOutputs(events, "PostToolUse").join("\n")).toContain(RULE);
+    expect(String(result?.result ?? "")).toContain(RULE);
+  });
+});
