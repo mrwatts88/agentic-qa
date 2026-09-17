@@ -57,6 +57,19 @@ describe("the Stop hook", () => {
   });
 
   /**
+   * `git status` reports a new directory as the directory, not the files in it,
+   * so a file created in a folder the repo did not have yet went unchecked.
+   */
+  it("checks a file created in a new directory", async () => {
+    git("init");
+    write("web/auth/session.ts", 'localStorage.setItem("authToken", token);\n');
+
+    await runStop(dir, FIRST);
+
+    expect(JSON.parse(output).reason).toContain("web/auth/session.ts");
+  });
+
+  /**
    * Blocking is done through the decision field, never the exit code. A crash
    * or a non-zero exit here would stop the turn without saying why, so the
    * process must always succeed and let the payload do the gating.

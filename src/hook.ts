@@ -54,7 +54,9 @@ export function refusedLines(refused: RefusedException[]): string[] {
 /** Paths git reports as modified, added or untracked. */
 export function changedFiles(cwd: string): string[] | undefined {
   try {
-    const out = execFileSync("git", ["status", "--porcelain"], {
+    // Every untracked file, not the default's collapsed "dir/": a file created
+    // in a new directory would otherwise never be checked.
+    const out = execFileSync("git", ["status", "--porcelain", "--untracked-files=all"], {
       cwd,
       encoding: "utf8",
       // Swallow git's stderr. Outside a repo it prints a fatal line, which is

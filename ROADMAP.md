@@ -68,7 +68,9 @@ What each place runs, once built:
   the gauntlet, see what makes sense, fix it or ignore it" — which is where
   a rule earns promotion into the corpus or gets switched off. Whether it should
   also run on commit was raised and decided against by default: blocking commits
-  on unvetted rules turns every false positive into a forced `qa-ignore`.
+  on unvetted rules turns every false positive into a forced `qa-ignore`. It is
+  an opt-in instead, for a repo that has worked through the gauntlet — fixed what
+  is real, switched off or excused what is not — and wants to keep it that way.
 - **Commit runs the corpus's mechanical rules only.** Judgment on commit was
   considered, since Stop already pays for it and commits are rarer, and rejected
   for a concrete reason: judging writes `.qa/rules.json`, a committed file, after
@@ -928,14 +930,15 @@ gauntlet is on demand" for the reasoning. To build:
   never blocks, and groups output by rule so a triage session sees "this rule,
   these N places" rather than a wall. An npm script in this repo, and a
   documented command for consuming repos.
+- **Commit can opt in to the gauntlet**, as a `callSites.commit` setting, off by
+  default, blocking when on. The README recommends turning it on once a repo is
+  clean against the gauntlet, and says how to get there: run it, fix what is
+  real, turn off or `qa-ignore` what is not.
 - **Stop messages the person only on the second pass**, with the findings that
   still stand and any refused exceptions. No notes on clean turns.
 - **Judgment findings at Stop carry the judge's reason and the rule's
-  rationale.** Built: `judgedLines` in `src/stop.ts`, unit-tested. Still to do:
-  check the wording lands with a smoke scenario — the agent, handed a judged
-  violation, should be able to say what to change. That scenario needs Stop's
-  judgment tier on, which this repo's config turns off, so it must set up its
-  own config and costs a judge call.
+  rationale.** Done, with a smoke scenario in which the agent, handed only the
+  block, names the ownership check to add.
 - **Update the invariants this changes** in CLAUDE.md: "The PostToolUse hook
   always exits zero", "The hook reports only on the file just edited", "Slow
   engines stay out of the per-edit hook", "Nothing that writes a ledger may run

@@ -15,16 +15,19 @@ import { runInit } from "../src/init";
  * repos wired to this checkout's `dist/`, and assert on the session transcript:
  * whether the turn was held, what the agent was told, what the person saw.
  *
- * Run with `npm run smoke`: five sessions in parallel, about 30s and $0.13,
+ * Run with `npm run smoke`: six sessions in parallel, about a minute. The five
+ * mechanical ones cost about $0.13; the judged one adds its judge calls,
  * using whatever login `claude` already has. Not part of `npm test`, and not in
  * CI. Transcripts land in `.qa/tmp/smoke/`.
  *
  * Shown to fail: with `decision` nested back inside `hookSpecificOutput`, the
  * bug these exist for, the three tests that need Stop to hold the turn fail.
  *
- * Stop runs with `--mechanical`: the judgment tiers would make model calls from
- * inside the hook, adding cost and nondeterminism, and they leave through the
- * same output code as everything else.
+ * Stop runs with `--mechanical` except in the one scenario about judgment: the
+ * judgment tiers make model calls from inside the hook, adding cost and
+ * nondeterminism, and otherwise leave through the same output code as
+ * everything else. That scenario turns them back on in its own throwaway repo,
+ * which is unaffected by this repo's config switching them off at Stop.
  */
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -45,6 +48,12 @@ const VIOLATION = fixture("session.ts");
 /** Draws only a note from a slow scanner, which never blocks. */
 const NOTE = fixture("app.ts");
 const RULE = "fe.storage.no-token-in-local-storage";
+/**
+ * Loads an order by id and checks only that a session exists. The judge calls
+ * it a violation of the ownership rule in the llm corpus's own known answers.
+ */
+const JUDGED = readFileSync(join(ROOT, "fixtures", "rules-llm", "api", "orders.ts"), "utf8");
+const JUDGED_RULE = "be.authz.ownership-check";
 
 /** No way to change code, so a held turn cannot be resolved by fixing it. */
 const READ_ONLY = ["--disallowedTools", "Edit,Write,Bash,NotebookEdit"];
@@ -54,6 +63,8 @@ type Event = Record<string, any>;
 interface Repo {
   files: Record<string, string>;
   hooks: { edit?: boolean; stop?: boolean };
+  /** Leave Stop's judgment tiers on, as `init` writes it for a consuming repo. */
+  judgment?: boolean;
 }
 
 /**
@@ -70,7 +81,7 @@ function makeRepo(name: string, repo: Repo): string {
   const path = join(dir, ".claude", "settings.json");
   const settings = JSON.parse(readFileSync(path, "utf8"));
   const stop = settings.hooks.Stop[0].hooks[0];
-  stop.command = `${stop.command} --mechanical`;
+  if (!repo.judgment) stop.command = `${stop.command} --mechanical`;
   if (!repo.hooks.edit) delete settings.hooks.PostToolUse;
   if (!repo.hooks.stop) delete settings.hooks.Stop;
   writeFileSync(path, JSON.stringify(settings, null, 2));
@@ -186,6 +197,15 @@ beforeAll(() => {
     "Say hello in one word.",
     READ_ONLY,
   );
+  sessions.judged = runSession(
+    "judged",
+    { files: { "api/orders.ts": JUDGED }, hooks: { stop: true }, judgment: true },
+    [
+      "Say hello in one word.",
+      "If a hook then stops you, reply with one sentence naming the code change it asks for.",
+    ].join("\n"),
+    READ_ONLY,
+  );
   sessions.notes = runSession(
     "notes",
     {
@@ -246,6 +266,22 @@ describe("Stop", () => {
     expect(stops[1].decision).toBeUndefined();
     expect(shownToPerson(events)).toContain("still stand");
     expect(ended(events)).toBe(true);
+  });
+
+  /**
+   * A rule statement names a principle, not a fix. The agent can say what to
+   * change only if the block carries what the judge saw in this file.
+   */
+  it("tells the agent what the judge saw, well enough to say what to change", async () => {
+    const events = await sessions.judged;
+    const feedback = stopFeedback(events).join("\n");
+    const result = String(events.find((e) => e.type === "result")?.result ?? "");
+
+    expect(payloads(events, "Stop")[0]?.decision).toBe("block");
+    expect(feedback).toContain(JUDGED_RULE);
+    expect(feedback).toContain("What the judge saw:");
+    expect(feedback).toContain("Why it matters:");
+    expect(result).toMatch(/own|belong|userId|authori[sz]/i);
   });
 
   it("does not hold the turn for scanner notes, and shows them to the person", async () => {
