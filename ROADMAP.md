@@ -89,12 +89,10 @@ What each place runs, once built:
   the agent knows which principle it broke but not what the judge saw. The block
   must include the judge's reason and the rule's rationale. Contract findings
   already carry their reason.
-- **No session-start steering yet.** A `SessionStart` hook could put a short form
-  of the guardrails in front of the agent before it writes anything, shipped from
-  the package so no consuming repo's files change. Not needed while the corpus
-  blocks at Stop: the agent learns a rule the moment it breaks one, with what to
-  fix. The signal to build it is the trial showing Stop blocking on the same
-  rules again and again.
+- **Session-start steering: reversed, now Next item 3.** It was deferred while
+  judgment blocked at Stop, on the view that the agent learns a rule the moment
+  it breaks one. Judgment left Stop after trial 2, so the only automatic moment
+  left to tell the main model about the judgment rules is before it writes.
 - **Instructions to agents in consuming repos travel in hook output, never in a
   steering file.** This repo's CLAUDE.md reaches only sessions working on this
   repo; nobody will edit every consuming repo's CLAUDE.md.
@@ -995,7 +993,57 @@ actual feature there with the hooks live, and record what nothing else can show:
 This is the calibration the fixtures cannot provide, and its findings will
 re-rank the items below it.
 
-### 3. CI documentation a consuming repo can follow
+### 3. Session-start steering: tell the agent the guardrails before it writes
+
+Prevention, where the review below is detection. A `SessionStart` hook, installed
+by `init --claude-hook`, puts a short form of the corpus in front of the main
+model — Opus or Fable — before it writes anything: what will be checked, and how
+to treat a finding. The text ships in the package and is generated from the
+corpus, so it cannot drift from what is enforced, and no consuming repo's
+CLAUDE.md changes. A strong model told the rules up front avoids most of what a
+reviewer would otherwise catch, at no per-call cost.
+
+- Short enough to be read, not skimmed: rule statements grouped by area, not
+  rationales. Measure its size; it is paid on every session.
+- Verified by a smoke scenario: a session asked to build something a rule
+  forbids, with the hook on and off, and the difference recorded.
+- Rerun the `orders-admin` trial prompt with it on, and compare what the review
+  finds against trials 1 and 2.
+
+### 4. One independent review per piece of work: `agentic-qa review`
+
+Replaces the per-rule, per-file judge calls, which trial 2 measured at about 30
+calls and minutes per feature. One fresh `claude -p` call on **Opus 5 at high
+effort** is handed the whole change — changed files, the judgment rules, the
+tests and their descriptions — and asked one question: does this change break
+any of these rules, and do these tests check what they claim? It returns
+findings, each with a file, a line, what it saw and why it matters.
+
+- **Independent judgment, findings to the author.** The review has no view of
+  the session that wrote the code, so it has no stake in its choices. The agent
+  runs the command when the work is ready for a PR, so the findings land where
+  the context to fix them is. CI runs the same review as the backstop, and an
+  exception still counts only once a person commits it.
+- **What "the change" is:** the branch against its merge base, plus the working
+  tree. A path argument narrows it.
+- **Seeing across files is the point.** An ownership check one layer down, or a
+  handler test that correctly mocks its service, is judged with both files in
+  view, rather than argued about in a comment for a judge that sees one.
+- **Cost is not the constraint.** The owner runs it on a plan that covers it,
+  and it replaces what a person would do by hand. Model and effort still live in
+  `qa.config.yaml` so a repo can choose.
+- **Caching per change**, not per rule and file: an unchanged change is not
+  re-reviewed. The ledger records the review, its version and what it covered.
+- **Scoring.** The eval corpora ask one rule of one file. Rework
+  `eval:rules-llm` and `eval:contracts` to score a review against known answers,
+  keeping the not-applicable controls, before trusting it.
+- **Size.** Past a limit, split by area into a few reviews, never back to one
+  per rule.
+- **CI** runs `review` in place of `rules --llm` and `contracts`.
+- A skill or documented prompt for "run the review, fix what is real, say what
+  you disagree with", so the agent does not argue findings away silently.
+
+### 5. CI documentation a consuming repo can follow
 
 `init` deliberately does not write CI (see "CI is documented, not generated").
 `agentic-qa ci` collapsed the checks into one step, but a working workflow still
@@ -1007,7 +1055,7 @@ consuming repo into the README, and prove it by running it in a real consuming
 repo before documenting it; `orders-admin` has no remote, so that needs one.
 Other providers get the command list, not examples.
 
-### 4. Adoption on an existing repo: the baseline ratchet
+### 6. Adoption on an existing repo: the baseline ratchet
 
 Half-solved by the severity split, and made more urgent by it. Pointing the
 gauntlet at an existing repo produces far more findings than 22 hand-written
@@ -1020,7 +1068,7 @@ and gets switched off the same afternoon. Snapshot the existing violations, fail
 only on new ones, and require the count to trend down. Every successful linter
 adoption works this way. It has to be designed in, not bolted on.
 
-### 5. Mutation grounding: adopt Stryker, then give it a trigger
+### 7. Mutation grounding: adopt Stryker, then give it a trigger
 
 Two problems, and the survey solved one of them. **StrykerJS** is mature mutation
 testing for JS/TS with deterministic operators, `--incremental` backed by its own
@@ -1042,7 +1090,7 @@ verdict changed since the last run, which the committed ledger already knows.
 Needs a `--changed` selection over the ledger, and a decision about where it is
 invoked from.
 
-### 6. Packaging and configuration
+### 8. Packaging and configuration
 
 Mostly done. The package builds on install via `prepare`, ships `dist/` and the
 rules corpus, and has been verified by packing it, installing the tarball into a
@@ -1063,7 +1111,7 @@ What is left:
 - **Stack profiles, framework gauntlets and a personal mode.** Designed in
   outline under "Raised, not yet designed"; all three build on the call-site table.
 
-### 7. Speed: a long-lived process
+### 9. Speed: a long-lived process
 
 Not needed yet. A fresh process per hook call spends almost all its time
 loading: eslint takes about 500ms to load and 20ms to lint, opengrep seconds to
@@ -1072,7 +1120,7 @@ without its load cost. Less pressing once item 1 removes the per-edit hook and
 keeps engines that claim no corpus rule out of Stop. Worth it only once
 item 2 shows latency is actually hurting.
 
-### 8. Make the gauntlet robust where no engine covers the stack
+### 10. Make the gauntlet robust where no engine covers the stack
 
 Separate from the corpus. The gauntlet is meant to be broad coverage for free,
 and it has holes wherever the engines and their plugins do not know the target
@@ -1091,9 +1139,9 @@ stack:
 The probe app behind these measurements is `fixtures/probes/gauntlet-hono-express`.
 
 The rules written here are gauntlet rules, not corpus promises: they widen what
-is noticed, and only a corpus claim (item 9) makes one block.
+is noticed, and only a corpus claim (item 11) makes one block.
 
-### 9. The corpus, last
+### 11. The corpus, last
 
 Everything that writes, moves or retires a rule. Last because a rule is only
 worth as much as the machine that enforces it.
@@ -1254,7 +1302,7 @@ Recorded from the build, so they are not relitigated.
   tsconfig the checked repo may not have, and a program build per run.
 - **Gauntlet noise is already measurable.** On this repo: 31 notes, including a
   real unused import, and `sonarjs/no-os-command-from-path` on every
-  `execFileSync("git")`, which is noise here. The answer is the ratchet (item 4)
+  `execFileSync("git")`, which is noise here. The answer is the ratchet (item 6)
   and trimming the preset deliberately, not filtering output to the corpus.
 
 ### The judgment tier is the part with no free incumbent
@@ -1325,11 +1373,6 @@ both — but none of them is settled.
   `init` puts hooks when the git root and the package differ, and whether the
   shipped eslint and dependency-cruiser configs must learn per-package roots.
 
-- **Session-start steering.** A `SessionStart` hook, installed by
-  `init --claude-hook`, putting a short form of the guardrails and how to treat
-  findings into the agent's context before it writes anything, from text shipped
-  in the package. Waiting on the trial showing repeated blocks on the same rules.
-  Verify with a smoke test before relying on it.
 - **Switching a gauntlet rule off for a whole repo.** Today the only ways are a
   `qa-ignore` per line or editing the shipped config, which changes every repo.
   A triage session that decides "this rule is wrong for us" needs somewhere to
@@ -1382,6 +1425,6 @@ both — but none of them is settled.
   observability and ops, performance and reliability). Infrastructure has no
   pack: its one Terraform rule, `sec.no-world-open-security-group`, is filed
   under security. Creating empty packs now would fix a taxonomy before the
-  classification pass (item 9) has shown what the concepts actually are; the
+  classification pass (item 11) has shown what the concepts actually are; the
   pack list is more likely to fall out of that pass than to precede it. An
   `infra` pack is the one that is clearly missing already.
