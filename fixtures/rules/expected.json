@@ -5,6 +5,7 @@
     { "rule": "fe.env.no-secret-in-public-env", "file": "web/config.ts" },
     { "rule": "be.layer.no-db-client-outside-repository", "file": "api/handlers.ts" },
     { "rule": "be.validation.no-unvalidated-request-body", "file": "api/handlers.ts" },
+    { "rule": "be.layer.no-db-client-outside-repository", "file": "api/services/reports.ts" },
     { "rule": "test.no-mocking-own-modules", "file": "tests/widget.test.ts" },
     { "rule": "test.no-conditional-logic", "file": "tests/widget.test.ts" },
     { "rule": "test.no-assertion-free-test", "file": "tests/widget.test.ts" },

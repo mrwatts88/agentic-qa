@@ -512,10 +512,11 @@ machine end to end before enumerating anything.
 **Read this first if you are new here.** The decisions above record what has been
 *settled*, which is not the same as what has been *built*. The delegation turn is
 partly implemented: the adapter seam, the corpus/gauntlet split and the coverage
-check exist, with **eslint as the only adapter**. Two corpus rules are delegated
-to it (`sec.jwt.no-none-algorithm`, `test.no-conditional-assertion`); every other
-mechanical rule is still a regex, some of them on purpose (see Phase 2).
-dependency-cruiser, gitleaks and semgrep are not wired in, and `mutate` is still
+check exist, with two adapters: **eslint** (`sec.jwt.no-none-algorithm`,
+`test.no-conditional-assertion`) and **dependency-cruiser**
+(`be.layer.no-db-client-outside-repository`). Every other mechanical rule is still
+a regex, some of them on purpose (see Phase 2). gitleaks and semgrep are not
+wired in, and `mutate` is still
 the hand-rolled version rather than Stryker. Everything in this section runs.
 
 **Done and verified.**
@@ -572,6 +573,18 @@ the hand-rolled version rather than Stryker. Everything in this section runs.
   test over the fixtures, and both were shown to fail by switching the claimed
   rule off. `fixtures/rules` scores 17/17 with no false positives. Whole
   repo in about 1.4s here; `orders-admin` is clean, with no notes.
+- The dependency-cruiser adapter. The layering rule moved to it because the
+  pattern could not see how real code reaches a database: in a probe shaped
+  like `orders-admin`, the import-name regex found two of six violations and
+  missed a handler importing the repo's own `db/client` module, `require`,
+  dynamic `import()` and a re-export. The cruiser found all six, on the right
+  line, in about 55ms, and `fixtures/rules` gained that case: the regex scores
+  17/18 on it, the cruiser 18/18. It follows imports through the repo, so
+  violations are reported only on the files asked about. `isLive` checks the
+  rule's `from` scope too, so a `pathNot` that drifted to exempt handlers fails
+  the coverage check rather than silently unenforcing. Shipped with a
+  `no-circular` gauntlet rule. A one-file PostToolUse run with both engines
+  takes about 0.7s. Path aliases from a tsconfig are not resolved yet.
 - The turn-boundary call site (`agentic-qa stop`): a `Stop` hook that checks
   everything the turn changed, blocks the agent from finishing while findings
   stand, and blocks at most once per turn. Mechanical first, with the judgment
@@ -584,16 +597,15 @@ the hand-rolled version rather than Stryker. Everything in this section runs.
 
 ## Next
 
-### 1. Phase 0: the remaining adapters
+### 1. Phase 0: gitleaks
 
 The seam, the coverage check, the qa-ignore decision and the fail-open/closed
-split are built, with eslint (see Status). What is left is the second and third
-adapters: **dependency-cruiser**, which takes over
-`be.layer.no-db-client-outside-repository`, and **gitleaks**, which takes over
-`sec.no-aws-access-key-id`. gitleaks is a Go binary rather than an npm package,
-so it is the first adapter that can genuinely be missing, and the first real
-exercise of failing open locally and closed in CI. Its `isLive` has no config
-to read unless we ship a `gitleaks.toml`; decide that before claiming a rule.
+split are built, with eslint and dependency-cruiser (see Status). What is left is
+**gitleaks**, which takes over `sec.no-aws-access-key-id`. It is a Go binary
+rather than an npm package, so it is the first adapter that can genuinely be
+missing, and the first real exercise of failing open locally and closed in CI —
+which means the CI workflow has to install it. Its `isLive` has no config to read
+unless we vendor a pinned `gitleaks.toml`; decide that before claiming a rule.
 
 Decided while building the eslint half, and worth not relitigating:
 
@@ -657,6 +669,11 @@ it actually matches before retiring a pattern.
   - `test.no-assertion-in-loop` (warn) — a new pattern. A loop is fine; a loop
     *around an assertion* passes when it iterates zero times. The old regex
     flagged every loop, setup loops included.
+- **Indentation is a weak proxy for "inside a test".** `test.no-conditional-logic`
+  flagged a type-narrowing guard in a helper defined inside a `describe`, which
+  is a common shape. It is a warning, and the helper moved to module scope, but
+  this is the pattern's ceiling: an AST rule scoped to test callbacks would not
+  make that mistake, and none exists that covers ternaries and nested ifs.
 - **Patterns match code inside strings.** The unit-test table for those two
   patterns tripped them, so the cases live in `test/test-shape-cases.json`. The
   loop rule then correctly caught the test iterating over its own tables.

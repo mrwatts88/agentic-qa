@@ -61,7 +61,7 @@ Every rule must say how it is enforced:
 
 | tier | enforced by | cost |
 | --- | --- | --- |
-| `mechanical` | a real engine (eslint today), or a pattern where none covers it | free, every line, always |
+| `mechanical` | a real engine (eslint, dependency-cruiser), or a pattern where none covers it | free, every line, always |
 | `llm` | a model reads the file and judges | about a cent, opt-in |
 | `human` | should this exist at all | no tool answers this |
 
@@ -70,23 +70,24 @@ cannot express: does this handler check the caller *owns* the record, does this
 catch block hide a failure.
 
 The mechanical tier runs eslint broadly — typescript-eslint, eslint-plugin-sonarjs
-and the vitest plugin, on recommended presets, from a config that ships with the
-package — and reports two kinds of finding:
+and the vitest plugin, on recommended presets — and dependency-cruiser for import
+layering, both from configs that ship with the package. It reports two kinds of
+finding:
 
-- **Corpus findings.** A rule with `enforcement: { kind: external, tool: eslint,
-  rule: <id> }` claims that eslint rule. Its findings carry the corpus rule's id
+- **Corpus findings.** A rule with `enforcement: { kind: external, tool: <tool>,
+  rule: <id> }` claims that tool's rule. Its findings carry the corpus rule's id
   and severity, and errors block. Before reporting, the tool checks that every
   claimed rule is actually switched on for the files it checks, and refuses to
   run if one is not: a dropped plugin must not look like clean code.
-- **Gauntlet notes.** Everything else eslint reports, as `eslint:<rule>`. Shown,
+- **Gauntlet notes.** Everything else a tool reports, as `<tool>:<rule>`. Shown,
   never blocking.
 
 `qa-ignore` silences either, by the id shown in brackets. A tool that cannot run
 is reported with the rules it left unenforced, and fails the run under `CI`.
 
-> **Where this is heading.** Two corpus rules are delegated so far. The rest are
-> hand-written patterns: some are being replaced by semgrep OSS,
-> dependency-cruiser and gitleaks on the same seam, and some stay because they
+> **Where this is heading.** Three corpus rules are delegated so far. The rest are
+> hand-written patterns: some are being replaced by semgrep OSS and gitleaks on
+> the same seam, and some stay because they
 > cover the target stack better than the engine rule does. The judgment tier is unaffected; it is the part
 > no free tool covers. See [ROADMAP.md](ROADMAP.md) — "Reversed: the mechanical
 > tier delegates to existing scanners".

@@ -7,7 +7,8 @@ import type { Adapter, ToolFinding, ToolRun } from "../src/rules/adapters/types"
 import { loadRules } from "../src/rules/load";
 import { runMechanical } from "../src/rules/mechanical";
 import { ruleAppliesTo } from "../src/rules/route";
-import { eslint } from "../src/rules/adapters/eslint";
+import { defaultAdapters } from "../src/rules/adapters/index";
+import { dependencyCruiser } from "../src/rules/adapters/dependency-cruiser";
 
 let dir: string;
 
@@ -221,17 +222,98 @@ describe("coverage of the bundled corpus", () => {
     expect(claimed.length).toBeGreaterThan(0);
   });
 
-  it.each(claimed.map((r) => [r.id, r] as const))(
-    "%s is live in the shipped eslint config on its violating fixture",
-    async (_id, rule) => {
-      const enforcement = rule.enforcement as { tool: string; rule: string };
-      const violation = expected.violations.find((v) => v.rule === rule.id);
+  // A claim with no fixture has nowhere to be proved.
+  it("gives every claimed rule a violating fixture", () => {
+    const proved = new Set(expected.violations.map((v) => v.rule));
 
-      // A claim with no fixture has nowhere to be proved.
-      expect(violation, `${rule.id} has no violating fixture`).toBeDefined();
-      expect(ruleAppliesTo(rule, violation!.file)).toBe(true);
-      expect(enforcement.tool).toBe("eslint");
-      await expect(eslint().isLive(fixtures, enforcement.rule, violation!.file)).resolves.toBe(true);
-    },
+    expect(claimed.map((r) => r.id).filter((id) => !proved.has(id))).toEqual([]);
+  });
+
+  // One row per claim per fixture, rather than a loop of assertions inside one
+  // test: test.no-assertion-in-loop flagged exactly that here.
+  const rows = claimed.flatMap((rule) =>
+    expected.violations
+      .filter((v) => v.rule === rule.id)
+      .map((v) => [rule.id, v.file, rule] as const),
   );
+
+  it.each(rows)("%s is live in the shipped config on %s", async (_id, file, rule) => {
+    const enforcement = rule.enforcement as { tool: string; rule: string };
+    const adapter = defaultAdapters().find((a) => a.tool === enforcement.tool);
+
+    expect(adapter, `no adapter for ${enforcement.tool}`).toBeDefined();
+    expect(ruleAppliesTo(rule, file)).toBe(true);
+    await expect(adapter!.isLive(fixtures, enforcement.rule, file)).resolves.toBe(true);
+  });
+});
+
+/**
+ * The shapes a database import really takes, in the layout orders-admin uses.
+ * The import-name pattern this replaced found two of these six.
+ */
+const RULE = "no-db-client-outside-repository";
+
+// At module scope on purpose: test.no-conditional-logic reads indentation as
+// "inside a test", so this guard nested in the describe below tripped it.
+async function violations(files: string[]) {
+  const run = await dependencyCruiser().run(dir, files);
+  if (run.status !== "ran") throw new Error(run.reason);
+  return run.findings.filter((f) => f.rule === RULE).map((f) => `${f.file}:${f.line}`).sort();
+}
+
+describe("the dependency-cruiser adapter", () => {
+  beforeEach(() => {
+    write("node_modules/pg/package.json", '{"name":"pg","main":"index.js"}');
+    write("node_modules/pg/index.js", "module.exports = {};\n");
+    write("src/db/client.ts", 'import pg from "pg";\nexport const pool = new pg.Pool();\n');
+    write("src/repositories/customerRepo.ts", 'import { pool } from "../db/client.js";\nexport const find = () => pool;\n');
+    write("src/services/customerService.ts", 'import * as repo from "../repositories/customerRepo.js";\nexport const get = () => repo.find();\n');
+    write("src/handlers/localClient.ts", 'export const x = 1;\n\nimport { pool } from "../db/client.js";\nexport const h = pool;\n');
+    write("src/handlers/pkg.ts", 'import pg from "pg";\nexport const h = pg;\n');
+    write("src/handlers/requires.ts", 'const { Pool } = require("pg");\nexport const h = Pool;\n');
+    write("src/handlers/dynamic.ts", 'export async function h() {\n  return import("pg");\n}\n');
+    write("src/handlers/reexport.ts", 'export { pool } from "../db/client.js";\n');
+    write("src/db/queries.ts", 'import pg from "pg";\nexport const q = pg;\n');
+  });
+
+  it("finds every way a handler reaches the database, on the line that does it", async () => {
+    const found = await violations([
+      "src/handlers/localClient.ts",
+      "src/handlers/pkg.ts",
+      "src/handlers/requires.ts",
+      "src/handlers/dynamic.ts",
+      "src/handlers/reexport.ts",
+      "src/db/queries.ts",
+    ]);
+
+    expect(found).toEqual([
+      "src/db/queries.ts:1",
+      "src/handlers/dynamic.ts:2",
+      "src/handlers/localClient.ts:3",
+      "src/handlers/pkg.ts:1",
+      "src/handlers/reexport.ts:1",
+      "src/handlers/requires.ts:1",
+    ]);
+  });
+
+  it("leaves the client module and the repository layer alone", async () => {
+    expect(
+      await violations(["src/db/client.ts", "src/repositories/customerRepo.ts", "src/services/customerService.ts"]),
+    ).toEqual([]);
+  });
+
+  /** Following imports reaches files nobody asked about; they are not reported. */
+  it("reports only on the files it was asked about, not the ones it followed into", async () => {
+    write("src/handlers/entry.ts", 'import { h } from "./pkg.js";\nexport const e = h;\n');
+
+    expect(await violations(["src/handlers/entry.ts"])).toEqual([]);
+  });
+
+  it("counts the rule as not live for a file its from-scope exempts", async () => {
+    const adapter = dependencyCruiser();
+
+    await expect(adapter.isLive(dir, RULE, "src/handlers/pkg.ts")).resolves.toBe(true);
+    await expect(adapter.isLive(dir, RULE, "src/repositories/customerRepo.ts")).resolves.toBe(false);
+    await expect(adapter.isLive(dir, "no-such-rule", "src/handlers/pkg.ts")).resolves.toBe(false);
+  });
 });

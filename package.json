@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@vitest/eslint-plugin": "^1.6.27",
+    "dependency-cruiser": "^18.3.1",
     "eslint": "^10.10.0",
     "eslint-plugin-sonarjs": "^4.2.1",
     "picocolors": "^1",

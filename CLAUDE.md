@@ -56,8 +56,9 @@ grounding needs.
   and refuses to run when a claimed tool rule is switched off.
 - `src/rules/adapters/*.ts` — one per engine. Runs the tool and returns what it
   said in the tool's own rule ids; knows nothing about the corpus.
-- `config/eslint.config.js` — the eslint config the tool ships and runs with.
-  Trimming a preset here can break a corpus claim; the coverage test says which.
+- `config/` — the engine configs the tool ships and runs with (eslint,
+  dependency-cruiser). Trimming a preset or narrowing a scope here can break a
+  corpus claim; the coverage test says which.
 - `src/rules/llm.ts` — runs the judgment tier, with its own cached ledger.
 - `src/rules/ignore.ts` — the qa-ignore escape hatch, shared by both tiers.
 - `src/rules/evaluate.ts` — scores both rule tiers against a known-answer file.

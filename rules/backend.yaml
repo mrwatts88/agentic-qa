@@ -22,10 +22,15 @@ rules:
         - "**/db/{client,index,pool}.{ts,js}"
         - "**/database/{client,index,pool}.{ts,js}"
         - "**/*.{test,spec}.{ts,tsx}"
+    # Delegated: the cruiser resolves the module graph, so it sees require(),
+    # dynamic import(), re-exports and the repo's own db/client module. The
+    # pattern it replaced matched only an import statement naming a package,
+    # and missed four of the six violations in a probe shaped like orders-admin.
+    # The cruiser config mirrors excludePaths above.
     enforcement:
-      kind: pattern
-      pattern: |-
-        from\s+['"](pg|postgres|postgres\.js|drizzle-orm|kysely|knex)['"]
+      kind: external
+      tool: dependency-cruiser
+      rule: no-db-client-outside-repository
 
   - id: be.validation.no-unvalidated-request-body
     statement: Validate a request body before using it.
