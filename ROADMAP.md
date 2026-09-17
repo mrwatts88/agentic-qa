@@ -732,10 +732,29 @@ already did once: opengrep reached the commit hook, adding about 5s to every
 commit, without anyone deciding it should. It is also the knob stack profiles,
 framework gauntlets and a personal mode all need.
 
-The shape: one policy table in code, with defaults, keyed by call site (`edit`,
-`stop`, `commit`, `ci`), each naming the engine groups (`fast`, `slow`, or named
-engines), whether judgment and contracts run, and exceptions — `commit` skipping
-a slow engine, say. `qa.config.yaml` overrides any cell. The existing flags
+The shape is three layers, each owned by whoever actually knows the answer:
+
+| layer | lives in | example |
+| --- | --- | --- |
+| engine facts | this repo, on each adapter | opengrep is `slow` |
+| default policy | this repo, one table | `edit` runs `fast`; `stop`, `commit`, `ci` run `fast` and `slow` |
+| repo overrides | the consuming repo's `qa.config.yaml` | skip opengrep on commit; accept slow checks per edit |
+
+- **Global decisions are ours to make.** Keeping opengrep out of the per-edit
+  hook is a fact about an engine this package ships, not a preference of the
+  repo using it, so it belongs in the defaults rather than in every repo's
+  config.
+- **Defaults select by property, not by name.** `edit` runs the `fast` group
+  rather than "everything except opengrep", so a slow engine added later stays
+  out of the per-edit hook without anyone remembering an exception. Named
+  per-engine exceptions belong in a repo's overrides, where a repo is choosing
+  its own trade-off.
+- **Each call site says whether judgment and contracts run**, in the same table.
+- **Not yet decided: whether `commit` runs the slow group by default.** It does
+  today only because opengrep landed there unexamined; this item decides it on
+  purpose.
+
+`qa.config.yaml` overrides any cell. The existing flags
 (`--mechanical`, `--llm`) become overrides of the same table rather than
 separate logic. A test checks the README's table against the defaults, so the
 documentation cannot drift from the code again.
