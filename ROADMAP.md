@@ -15,6 +15,13 @@ AWS/Terraform, auth provider undecided (possibly Cognito).
 
 It has to work across repos, not be rebuilt per project.
 
+**It is a tool to use, not a product to ship.** It exists to check its owner's
+own repos, on their own machines, installed from this public repository as a git
+dependency. That is what makes some licensing choices open — the semgrep
+community rules may be used for your own purposes, so they are downloaded per
+machine rather than bundled — and it is why publishing, a plugin marketplace and
+selling are not goals. Revisit the licensing decisions if that ever changes.
+
 ---
 
 ## Decisions already made

@@ -282,6 +282,18 @@ grounding needs.
 
 ## Working on this repo itself
 
+- **Evaluate before building.** Before a large piece of work, lay out the
+  options, update ROADMAP in priority order, and agree the next step. The
+  system has to be trustworthy and usable before the rules corpus grows, so
+  rule-writing comes last.
+- **Keep the README understandable.** It is for someone setting this up, not a
+  design record: plain tables for what runs where and what it costs. Reasoning
+  belongs in ROADMAP.
+- **Knowledge lives in repo files, not in agent memory.** Anything a future
+  session needs goes in this file, ROADMAP or a committed fixture, where it is
+  read every time. Throwaway experiments that a roadmap item starts from go in
+  `fixtures/probes/`, never only a session scratchpad.
+
 - **This repo's own `Stop` hook runs `--mechanical` on purpose.** `init` writes
   `agentic-qa stop` with no flag, so other repos get the judgment tiers at the
   turn boundary. Here it is restricted to the free tier because a model call on
