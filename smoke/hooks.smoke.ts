@@ -15,18 +15,12 @@ import { runInit } from "../src/init";
  * repos wired to this checkout's `dist/`, and assert on the session transcript:
  * whether the turn was held, what the agent was told, what the person saw.
  *
- * Run with `npm run smoke`: five sessions in parallel, about a minute, using
- * whatever login `claude` already has. The judged one also pays for its judge. Not part of `npm test`, and not in
+ * Run with `npm run smoke`: four sessions in parallel, about a minute, using
+ * whatever login `claude` already has. Not part of `npm test`, and not in
  * CI. Transcripts land in `.qa/tmp/smoke/`.
  *
  * Shown to fail: with `decision` nested back inside `hookSpecificOutput`, the
  * bug these exist for, the three tests that need Stop to hold the turn fail.
- *
- * Stop runs with `--mechanical` except in the one scenario about judgment: the
- * judgment tiers make model calls from inside the hook, adding cost and
- * nondeterminism, and otherwise leave through the same output code as
- * everything else. That scenario turns them back on in its own throwaway repo,
- * which is unaffected by this repo's config switching them off at Stop.
  */
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -47,12 +41,6 @@ const VIOLATION = fixture("session.ts");
 /** Draws only a gauntlet finding from a scanner, which Stop never shows. */
 const NOTE = fixture("app.ts");
 const RULE = "fe.storage.no-token-in-local-storage";
-/**
- * Loads an order by id and checks only that a session exists. The judge calls
- * it a violation of the ownership rule in the llm corpus's own known answers.
- */
-const JUDGED = readFileSync(join(ROOT, "fixtures", "rules-llm", "api", "orders.ts"), "utf8");
-const JUDGED_RULE = "be.authz.ownership-check";
 
 /**
  * No tools at all, so a held turn cannot be resolved by fixing it. A deny list
@@ -65,25 +53,17 @@ type Event = Record<string, any>;
 
 interface Repo {
   files: Record<string, string>;
-  /** Leave Stop's judgment tiers on, as `init` writes it for a consuming repo. */
-  judgment?: boolean;
 }
 
 /**
  * The hooks come from `init`, pointed at this checkout, so a session also proves
- * the wiring `init` writes works — event name and placement. One edit after:
- * Stop gains `--mechanical`, unless the scenario is about judgment.
+ * the wiring `init` writes works — event name and placement.
  */
 function makeRepo(name: string, repo: Repo): string {
   const dir = mkdtempSync(join(tmpdir(), `agentic-qa-smoke-${name}-`));
   execFileSync("git", ["init", "-q"], { cwd: dir });
 
   runInit(dir, `node "${CLI}"`, { gitHook: false, claudeHook: true, force: false });
-  const path = join(dir, ".claude", "settings.json");
-  const settings = JSON.parse(readFileSync(path, "utf8"));
-  const stop = settings.hooks.Stop[0].hooks[0];
-  if (!repo.judgment) stop.command = `${stop.command} --mechanical`;
-  writeFileSync(path, JSON.stringify(settings, null, 2));
 
   for (const [path, contents] of Object.entries(repo.files)) {
     mkdirSync(dirname(join(dir, path)), { recursive: true });
@@ -195,15 +175,6 @@ beforeAll(() => {
     "Say hello in one word.",
     NO_TOOLS,
   );
-  sessions.judged = runSession(
-    "judged",
-    { files: { "api/orders.ts": JUDGED }, judgment: true },
-    [
-      "Say hello in one word.",
-      "If a hook then stops you, reply with one sentence naming the code change it asks for.",
-    ].join("\n"),
-    NO_TOOLS,
-  );
   sessions.notes = runSession(
     "notes",
     {
@@ -249,22 +220,6 @@ describe("Stop", () => {
     expect(stops[1].decision).toBeUndefined();
     expect(shownToPerson(events)).toContain("still stand");
     expect(ended(events)).toBe(true);
-  });
-
-  /**
-   * A rule statement names a principle, not a fix. The agent can say what to
-   * change only if the block carries what the judge saw in this file.
-   */
-  it("tells the agent what the judge saw, well enough to say what to change", async () => {
-    const events = await sessions.judged;
-    const feedback = stopFeedback(events).join("\n");
-    const result = String(events.find((e) => e.type === "result")?.result ?? "");
-
-    expect(payloads(events, "Stop")[0]?.decision).toBe("block");
-    expect(feedback).toContain(JUDGED_RULE);
-    expect(feedback).toContain("What the judge saw:");
-    expect(feedback).toContain("Why it matters:");
-    expect(result).toMatch(/own|belong|userId|authori[sz]/i);
   });
 
   it("says nothing to anyone about what the corpus does not claim", async () => {

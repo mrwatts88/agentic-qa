@@ -58,6 +58,7 @@ async function main(): Promise<number> {
       staged: { type: "boolean", default: false },
       "git-hook": { type: "boolean", default: false },
       "claude-hook": { type: "boolean", default: false },
+      // Accepted and ignored: Stop is mechanical-only now, and older settings pass it.
       mechanical: { type: "boolean", default: false },
       force: { type: "boolean", default: false },
       json: { type: "boolean", default: false },
@@ -106,12 +107,7 @@ async function main(): Promise<number> {
   // code, so a crash here can never trap a turn.
   if (command === "stop") {
     const { stopHookActive } = await readHookPayload();
-    return runStop(hookCwd, {
-      stopHookActive: stopHookActive ?? false,
-      // An override of the stop row, not separate logic: off here means off,
-      // and absent means whatever the call-site policy says.
-      ...(values.mechanical ? { judgment: false } : {}),
-    });
+    return runStop(hookCwd, { stopHookActive: stopHookActive ?? false });
   }
 
   // The two call sites that gate by exit code. What each runs is its row of the

@@ -6,8 +6,8 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/dist/cli.js\" stop",
-            "timeout": 600,
-            "statusMessage": "agentic-qa: checking the turn (judgment tiers off here, see qa.config.yaml)"
+            "timeout": 300,
+            "statusMessage": "agentic-qa: checking rules"
           }
         ]
       }

@@ -55,9 +55,9 @@ describe("the default policy", () => {
 
 describe("repo overrides", () => {
   it("replaces only the cells a repo names", () => {
-    const policy = policyFor("stop", parseSiteOverrides({ stop: { contracts: false } }));
+    const policy = policyFor("ci", parseSiteOverrides({ ci: { contracts: false } }));
 
-    expect(policy).toEqual({ ...DEFAULT_POLICY.stop, contracts: false });
+    expect(policy).toEqual({ ...DEFAULT_POLICY.ci, contracts: false });
   });
 
   it("can put slow engines back on commit, or leave one out by name", () => {
@@ -97,7 +97,9 @@ describe("repo overrides", () => {
   });
 
   it.each([
-    [{ stop: { gauntlet: true } }, "the agent is told about the corpus only"],
+    [{ stop: { gauntlet: true } }, "Stop runs the mechanical corpus only"],
+    [{ stop: { llm: true } }, "Stop runs the mechanical corpus only"],
+    [{ stop: { contracts: true } }, "Stop runs the mechanical corpus only"],
     [{ commit: { llm: true } }, "a commit must not cost money"],
     [{ commit: { contracts: true } }, "a commit must not cost money"],
   ])("refuses a cell an invariant fixes: %j", (raw, why) => {

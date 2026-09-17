@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { judgedLines, runStop } from "../src/stop";
+import { runStop } from "../src/stop";
 import { defaultAdapters } from "../src/rules/adapters/index";
 import type { Adapter } from "../src/rules/adapters/types";
 
@@ -23,9 +23,9 @@ function git(...args: string[]): void {
 /** The first firing of a turn: nothing has blocked yet. */
 // The fast engines only: the slow ones download their binaries on first use,
 // which a unit test must not do. Their behaviour is covered in adapters.test.ts.
-const FIRST = { stopHookActive: false, judgment: false, adapters: defaultAdapters({ fast: true }) };
+const FIRST = { stopHookActive: false, adapters: defaultAdapters({ fast: true }) };
 /** The second: a Stop hook has already held this turn once. */
-const AGAIN = { stopHookActive: true, judgment: false, adapters: defaultAdapters({ fast: true }) };
+const AGAIN = { stopHookActive: true, adapters: defaultAdapters({ fast: true }) };
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "agentic-qa-stop-"));
@@ -253,38 +253,4 @@ describe("the Stop hook", () => {
     expect(payload.systemMessage).toContain("could not run");
   });
 
-  /**
-   * A judgment that did not happen must not read as a clean one. Here the
-   * window has already closed, so nothing due is judged, and the person hears.
-   */
-  it("tells the person what it had no time to judge, and does not block for it", async () => {
-    git("init");
-    write("api/orders.ts", "export async function getOrder(id: string) {\n  return db.orders.find(id);\n}\n");
-
-    await runStop(dir, { ...FIRST, judgment: true, judgingWindowMs: -1 });
-    const payload = JSON.parse(output);
-
-    expect(payload.decision).toBeUndefined();
-    expect(payload.systemMessage).toContain("not judged within Stop's time");
-  });
-
-  /**
-   * The statement alone names a principle, not a fix. The judge's reason is the
-   * only part that says what it saw in this file, so a block without it leaves
-   * the agent guessing.
-   */
-  it("tells the agent what the judge saw and why the rule matters", () => {
-    const text = judgedLines({
-      file: "src/orders.ts",
-      line: 12,
-      statement: "Check that the record belongs to the caller",
-      ruleId: "be.authz.ownership-check",
-      excerpt: "loads the order by id but never checks it belongs to the caller",
-      rationale: "Guessable ids let one user read another's orders.",
-    });
-
-    expect(text).toContain("src/orders.ts:12");
-    expect(text).toContain("What the judge saw: loads the order by id");
-    expect(text).toContain("Why it matters: Guessable ids");
-  });
 });

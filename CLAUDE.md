@@ -199,19 +199,11 @@ grounding needs.
   to what `src/stop.ts` or the settings `init` writes emit, and
   add a scenario to `smoke/hooks.smoke.ts` for any new behaviour. Their inputs
   live in `fixtures/smoke/`, because they break rules on purpose.
-- **Stop runs the ladder at runtime: mechanical first, and no judgment pass at
-  all when a pattern already found an error.** Paying a model to judge code
-  that fails a linter-tier rule is the same waste the enforcement ladder exists
-  to prevent, one layer down.
-- **Stop runs the paid tiers only when it can tell what changed.** Outside a git
-  repo there is no working-tree scope, and judging the whole repo on every turn
-  is a surprise on someone's bill. Mechanical still runs; judgment does not.
-- **Stop finishes inside its hook timeout, whatever the turn changed.** A hook
-  past its timeout is cancelled with nothing reported: the first real feature
-  built in `orders-admin` went entirely unchecked that way. Stop starts no
-  judgment after `JUDGING_WINDOW_MS`, tells the person what it left unjudged or
-  failed to judge, and the cached ledger picks the rest up next turn. A test
-  holds the window plus the judge's timeout inside the timeout `init` writes.
+- **Stop runs the mechanical corpus only.** Judgment was tried there and does
+  not fit a turn: on one feature's worth of changes it made about 30 model
+  calls, took minutes, overran the hook timeout and was cancelled having checked
+  nothing. The judgment rules and test contracts run on demand and in CI. The
+  cells are fixed in `src/sites.ts`, so no repo can turn them back on at Stop.
 - **Nothing that writes a ledger may run from a hook that can fire
   concurrently.** Tool hooks such as PostToolUse fire inside subagents too, and
   parallel subagents have no documented ordering, so two copies can run at once.
@@ -373,13 +365,6 @@ grounding needs.
   read every time. Throwaway experiments that a roadmap item starts from go in
   `fixtures/probes/`, never only a session scratchpad.
 
-- **This repo's own `Stop` runs the free tier only, on purpose.** Consuming
-  repos get the judgment tiers at the turn boundary by default. Here they are
-  off because a model call on every turn of every session in this repo is real
-  money for no benefit while working on the tool itself. It is set under
-  `callSites.stop` in this repo's `qa.config.yaml`, not with a flag in
-  `.claude/settings.json`, which matches what `init` writes. Do not turn it on,
-  and do not change the default in `src/sites.ts` to match it.
 - **`orders-admin` installs this as a git dependency, so it lags.** A new CLI
   command does not exist there until this repo is pushed and the dependency is
   reinstalled. The order is: commit and push here, then

@@ -233,7 +233,7 @@ is told cannot drift from what the gate enforces. What each one runs by default:
 
 | call site | command | scanners | judgment rules | test contracts | gauntlet |
 | --- | --- | --- | --- | --- | --- |
-| end of each turn | `agentic-qa stop` | eslint, dependency-cruiser, gitleaks, opengrep | yes | yes | no |
+| end of each turn | `agentic-qa stop` | eslint, dependency-cruiser, gitleaks, opengrep | no | no | no |
 | on commit | `agentic-qa commit` | eslint, dependency-cruiser, gitleaks | no | no | no |
 | CI | `agentic-qa ci` | eslint, dependency-cruiser, gitleaks, opengrep | yes | yes | no |
 
@@ -241,10 +241,11 @@ is told cannot drift from what the gate enforces. What each one runs by default:
   steers. If a rule is broken, the agent is not allowed to finish and is told
   why while it still has the context that produced the code. It blocks once,
   then tells you and lets the turn end, so it can never trap a session. You
-  hear from it only then, or if a check could not run or finish; a clean turn
-  is silent. Judging stops starting new work after three minutes, and whatever
-  it did not reach is judged at the end of the next turn.
-  It runs only the scanners that enforce a corpus rule on the changed files.
+  hear from it only then, or if a check could not run; a clean turn is silent.
+  It runs only the free rules, and only the scanners that enforce one on the
+  changed files. The rules that need a model's judgment, and test contracts,
+  take minutes on a feature's worth of changes, so they run when you ask and in
+  CI: `agentic-qa rules --llm` and `agentic-qa contracts`.
 - **On commit** checks staged files and refuses the commit on an error. It
   lives in a committed `hooks/` directory, and the `prepare` script points git
   at it on every `npm install`, so a fresh clone is gated without anyone typing
@@ -263,6 +264,7 @@ callSites:
     scanners: all          # fast (the default here) or all
   stop:
     skip: [opengrep]       # leave a scanner out by name
+  ci:
     contracts: false       # judgment rules and test contracts switch separately
 ```
 
@@ -270,9 +272,10 @@ callSites:
 a later version stays out of the quick call sites without any config change.
 Skipping a scanner leaves the rules it enforces to the other call sites.
 
-Three cells cannot be changed: the commit hook never runs the judgment rules or
-test contracts, because a commit must never cost money or wait on a model, and
-the end of a turn never shows the gauntlet. A misspelled call site, setting or scanner name is an error, not ignored.
+Some cells cannot be changed. The commit hook never runs the judgment rules or
+test contracts, because a commit must never cost money or wait on a model. The
+end of a turn never runs them either, because they do not fit in one, and never
+shows the gauntlet. A misspelled call site, setting or scanner name is an error, not ignored.
 
 ### CI
 

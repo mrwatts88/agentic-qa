@@ -4,10 +4,7 @@ import { loadRules } from "./rules/load.js";
 import { selectFiles } from "./rules/select.js";
 import { runMechanical } from "./rules/mechanical.js";
 import type { Adapter } from "./rules/adapters/types.js";
-import type { Finding } from "./rules/types.js";
 import { adaptersFor, policyFor } from "./sites.js";
-import { runLlmRules } from "./rules/llm.js";
-import { checkContracts } from "./contracts/check.js";
 import { changedFiles, EXCEPTIONS_ARE_APPROVED, refusedLines } from "./hook.js";
 import { committedOnly, ExceptionGate } from "./rules/exceptions.js";
 
@@ -21,6 +18,10 @@ import { committedOnly, ExceptionGate } from "./rules/exceptions.js";
  * It checks the working tree, not a list of edits, so a change made any way —
  * a `sed` in Bash, a generator, a lockfile rewritten by an install — is seen.
  *
+ * Mechanical rules only. Judging a turn's changes took minutes and dozens of
+ * model calls in a real session, overran the hook's timeout and checked
+ * nothing; judgment runs on demand and in CI instead.
+ *
  * It blocks at most once per turn. `stop_hook_active` is true when a Stop hook
  * has already blocked, and blocking again from there is how a session ends up
  * unable to finish. On the second pass it reports the same findings and lets
@@ -29,15 +30,8 @@ import { committedOnly, ExceptionGate } from "./rules/exceptions.js";
 export interface StopOptions {
   /** True when a Stop hook has already blocked the agent this turn. */
   stopHookActive: boolean;
-  /**
-   * False switches off the judgment rules and test contracts whatever the
-   * call-site policy says: `--mechanical`, an override of the same table.
-   */
-  judgment?: boolean;
   /** The engines to run; the policy's by default. Tests pass the fast ones. */
   adapters?: Adapter[];
-  /** How long to keep starting judgments; JUDGING_WINDOW_MS by default. */
-  judgingWindowMs?: number;
 }
 
 /**
@@ -57,42 +51,7 @@ function emit(payload: unknown): void {
   process.stdout.write(JSON.stringify(payload) + "\n");
 }
 
-/**
- * How long Stop keeps starting judgments. A turn that changed a lot can need
- * dozens, and a hook that runs past its timeout is cancelled with nothing
- * reported, which checks less than stopping early would. What is not judged
- * this turn is judged at the next one's end, since verdicts are cached. Kept
- * well inside STOP_HOOK_TIMEOUT_S with room for a judgment already running.
- */
-export const JUDGING_WINDOW_MS = 180_000;
-
 const FIX_OR_EXCUSE = `Fix these before finishing.\n${EXCEPTIONS_ARE_APPROVED}`;
-
-/**
- * A judged finding, worded so the agent can act on it. The statement names the
- * principle; only the judge's reason says what it saw in this file, and the
- * rationale says why it matters. Without them a block reads as "you broke rule
- * X" with nothing to fix.
- */
-export function judgedLines(f: Pick<Finding, "file" | "line" | "statement" | "ruleId" | "excerpt" | "rationale">): string {
-  return [
-    `- ${f.file}:${f.line} ${f.statement} [${f.ruleId}]`,
-    ...(f.excerpt ? [`  What the judge saw: ${f.excerpt}`] : []),
-    ...(f.rationale ? [`  Why it matters: ${f.rationale}`] : []),
-  ].join("\n");
-}
-
-/** What a judgment tier left undone this turn, worded for the person. */
-function unfinished(what: string, unjudged: number, errors: string[]): string[] {
-  return [
-    ...(unjudged
-      ? [`agentic-qa: ${unjudged} ${what}(s) not judged within Stop's time; they will be at the end of the next turn.`]
-      : []),
-    ...(errors.length
-      ? [`agentic-qa: ${errors.length} ${what}(s) failed to judge, so were not checked: ${errors[0]}`]
-      : []),
-  ];
-}
 
 export async function runStop(cwd: string, options: StopOptions): Promise<number> {
   try {
@@ -102,16 +61,13 @@ export async function runStop(cwd: string, options: StopOptions): Promise<number
       config.rules.packs,
     );
 
-    // What this turn touched, however it touched it. Outside a git repo there
-    // is no such thing, and judging the entire repo on every turn would be an
-    // unpleasant surprise on someone's bill, so the paid tiers stay off.
+    // What this turn touched, however it touched it.
     const scope = changedFiles(cwd);
     const files = await selectFiles(cwd, config, rules, scope);
     if (!files.length) return 0;
 
     const policy = policyFor("stop", config.callSites);
     const adapters = options.adapters ?? adaptersFor(policy);
-    // One gate for both tiers, so an exception refused by either is listed once.
     const gate = new ExceptionGate(committedOnly(cwd));
     // The corpus only. Unvetted scanner output shown to the agent taught it to
     // skip hook output altogether; that is `agentic-qa gauntlet`, run by a person.
@@ -121,40 +77,9 @@ export async function runStop(cwd: string, options: StopOptions): Promise<number
       gauntlet: false,
     });
 
-    const findings: string[] = [];
-    const mechanical = result.findings.filter((f) => f.origin === "corpus");
-    for (const f of mechanical) {
-      findings.push(`- ${f.file}:${f.line} ${f.statement} [${f.ruleId}]`);
-    }
-
-    // The enforcement ladder, applied at runtime rather than only when a rule
-    // is written: there is no point paying a model to judge code that already
-    // fails a pattern, and the pattern findings are the ones worth fixing first.
-    const blocked = mechanical.some((f) => f.severity === "error");
-    const judgment = options.judgment !== false;
-    const deadline = Date.now() + (options.judgingWindowMs ?? JUDGING_WINDOW_MS);
-    const incomplete: string[] = [];
-    if (!blocked && judgment && scope) {
-      if (policy.llm) {
-        const llm = await runLlmRules(cwd, files, rules, config, false, true, gate, deadline);
-        for (const f of llm.findings) findings.push(judgedLines(f));
-        incomplete.push(...unfinished("rule judgment", llm.unjudged, llm.errors));
-      }
-
-      if (policy.contracts) {
-        const contracts = await checkContracts(config, {
-          cwd,
-          all: false,
-          only: scope,
-          json: true,
-          deadline,
-        });
-        incomplete.push(...unfinished("test contract", contracts.unjudged, contracts.errors));
-        for (const r of contracts.violated) {
-          findings.push(`- ${r.file} claims "${r.description}" — ${r.reason}`);
-        }
-      }
-    }
+    const findings = result.findings
+      .filter((f) => f.origin === "corpus")
+      .map((f) => `- ${f.file}:${f.line} ${f.statement} [${f.ruleId}]`);
 
     const unenforced = result.unenforced.map(
       (u) => `${u.tool} did not run (${u.reason})${u.rules.length ? `; unchecked: ${u.rules.join(", ")}` : ""}`,
@@ -182,8 +107,6 @@ export async function runStop(cwd: string, options: StopOptions): Promise<number
             ? ["", "These qa-ignore comments are not committed, so they do not count:", ...refusedLines(refused)]
             : []),
         ].join("\n"),
-        // A check that did not finish is the person's to know, blocked or not.
-        ...(incomplete.length ? { systemMessage: incomplete.join("\n") } : {}),
       });
       return 0;
     }
@@ -200,7 +123,6 @@ export async function runStop(cwd: string, options: StopOptions): Promise<number
           ]
         : []),
       ...refusedSection,
-      ...incomplete,
       ...unenforced.map((u) => `agentic-qa: ${u}`),
     ];
     if (message.length) emit({ systemMessage: message.join("\n") });

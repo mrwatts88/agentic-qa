@@ -959,6 +959,12 @@ nothing. Measured on its `orders.ts`, one judgment at a time:
   by extension, so every backend rule is sent every `.ts` file, and each new
   test is a call of its own.
 
+**Decided after trial 2:** Stop runs the mechanical corpus only. Judgment
+moves to a review run on demand when a piece of work is ready for a PR, and to
+CI as the backstop. The owner works in handbacks of about one PR, but follow-up
+turns would each re-review, and a partial review loses the whole-feature view.
+Next: replace per-rule, per-file calls with one review of the whole change.
+
 So judgment at every turn's end does not fit a turn as built. The levers, not
 yet chosen: route llm rules on content as well as path (fewer calls; a bad
 pattern is a silent miss), judge every rule for a file in one call (one think

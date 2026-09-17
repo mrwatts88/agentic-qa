@@ -59,9 +59,6 @@ exec ${runner} commit
 `;
 }
 
-/** Seconds Claude Code gives the Stop hook. See JUDGING_WINDOW_MS in src/stop.ts. */
-export const STOP_HOOK_TIMEOUT_S = 600;
-
 function claudeSettings(runner: string): string {
   return (
     JSON.stringify(
@@ -75,11 +72,8 @@ function claudeSettings(runner: string): string {
                 {
                   type: "command",
                   command: `${runner} stop`,
-                  // Stop starts no judgment after JUDGING_WINDOW_MS, and one
-                  // already running can take the judge's own timeout on top.
-                  // This must cover both, or a slow turn is cancelled unchecked.
-                  timeout: STOP_HOOK_TIMEOUT_S,
-                  statusMessage: "agentic-qa: rules, judgment tier and test contracts",
+                  timeout: 300,
+                  statusMessage: "agentic-qa: checking rules",
                 },
               ],
             },

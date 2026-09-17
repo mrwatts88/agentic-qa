@@ -1,8 +1,5 @@
 import { describe, it, expect } from "vitest";
 import { pool } from "../src/pool";
-import { DEFAULT_CONFIG } from "../src/config";
-import { STOP_HOOK_TIMEOUT_S } from "../src/init";
-import { JUDGING_WINDOW_MS } from "../src/stop";
 
 describe("pool", () => {
   it("runs every item when there is no deadline", async () => {
@@ -34,17 +31,5 @@ describe("pool", () => {
     );
 
     expect(finished).toEqual([1]);
-  });
-});
-
-/**
- * A Stop hook that outlives its timeout is cancelled with nothing reported: a
- * real session built a feature and none of it was checked. The window in which
- * Stop starts judgments, plus one judgment that started at its very end, has to
- * fit inside the timeout `init` writes.
- */
-describe("the Stop hook's time", () => {
-  it("fits the judging window and one last judgment inside the hook timeout", () => {
-    expect(JUDGING_WINDOW_MS + DEFAULT_CONFIG.judge.timeoutMs).toBeLessThan(STOP_HOOK_TIMEOUT_S * 1000);
   });
 });

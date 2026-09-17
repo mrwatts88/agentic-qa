@@ -44,9 +44,9 @@ export interface SitePolicy {
 }
 
 export const DEFAULT_POLICY: Record<CallSite, SitePolicy> = {
-  // The one agent-facing place that can hold the turn; cost, not latency, is
-  // what limits it.
-  stop: { scanners: "all", skip: [], llm: true, contracts: true, gauntlet: false },
+  // The one agent-facing place that can hold the turn. Mechanical only: judging
+  // a turn's changes took minutes in a real session and overran the hook.
+  stop: { scanners: "all", skip: [], llm: false, contracts: false, gauntlet: false },
   // Every commit pays this, a person's as much as an agent's. The slow engines'
   // corpus rules still block at Stop and in CI, and CI is the gate nobody can
   // skip with --no-verify.
@@ -57,13 +57,16 @@ export const DEFAULT_POLICY: Record<CallSite, SitePolicy> = {
 
 /**
  * Cells a repo may not change, and why. Invariants rather than preferences: a
- * commit must never cost money or wait on a model, and the agent hears only
- * the corpus, because unvetted scanner output taught it to skip hook output.
+ * commit must never cost money or wait on a model; Stop must finish inside a
+ * turn, which judgment did not; and the agent hears only the corpus, because
+ * unvetted scanner output taught it to skip hook output.
  */
 const FIXED: Partial<Record<CallSite, { cells: (keyof SitePolicy)[]; why: string }>> = {
   stop: {
-    cells: ["gauntlet"],
-    why: "the agent is told about the corpus only; run agentic-qa gauntlet instead",
+    cells: ["gauntlet", "llm", "contracts"],
+    why:
+      "Stop runs the mechanical corpus only: judgment takes minutes, and the gauntlet " +
+      "is not for the agent. Run agentic-qa ci, rules --llm, contracts or gauntlet instead",
   },
   commit: {
     cells: ["llm", "contracts"],
