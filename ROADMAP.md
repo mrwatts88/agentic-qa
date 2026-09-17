@@ -760,20 +760,21 @@ machine end to end before enumerating anything.
 Built: four scanner adapters — **eslint**, **dependency-cruiser**, **gitleaks**
 and **opengrep** running the semgrep community rules — behind one conductor with
 the corpus/gauntlet split and the coverage check, and the scanners npm cannot
-install provisioned automatically. Four corpus rules are delegated to them
+install provisioned automatically. Five corpus rules are delegated to them
 (`sec.jwt.no-none-algorithm`, `test.no-conditional-assertion`,
-`be.layer.no-db-client-outside-repository`, `sec.no-aws-access-key-id`); every
-other mechanical rule is still a pattern, some on purpose. opengrep claims no
-corpus rule yet. `mutate` is still the hand-rolled version rather than Stryker.
+`be.layer.no-db-client-outside-repository`, `sec.no-aws-access-key-id`, and
+`sec.no-committed-secret`, which claims every other gitleaks rule); every other
+mechanical rule is still a pattern, some on purpose. opengrep claims no corpus
+rule yet. `mutate` is still the hand-rolled version rather than Stryker. The
+guide ships in `guide/` and steers the agent at session start.
 
-Everything listed below runs. First in Next is reshaping the call sites so the
-hooks enforce the corpus and the gauntlet runs on demand, which is decided but
-not built.
+Everything listed below runs. Next is `agentic-qa review` (Next, item 3).
 
 Known gaps in what is built: this repo's CI has no `ANTHROPIC_API_KEY` secret,
 so its `ci` step has never run the judgment rules or contracts; they are scored
-by hand with `npm run eval:rules-llm` and `eval:contracts`. And a judgment finding
-at Stop does not tell the agent what the judge saw (Next, item 1).
+by hand with `npm run eval:rules-llm` and `eval:contracts`. Judgment runs only
+on demand and in CI, one call per rule per file, which trial 2 showed is too
+slow for a feature's worth of change; the review replaces it.
 
 **Done and verified.**
 
@@ -791,7 +792,7 @@ at Stop does not tell the agent what the judge saw (Next, item 1).
   with excludes, the pattern tier, `qa-ignore`, and scoring against
   `fixtures/rules`. 14/14 known violations found, 0 false positives across
   seven clean control files.
-- A corpus of 22 rules across frontend, backend, data, testing and security,
+- A corpus of 25 rules across frontend, backend, data, testing and security,
   each with a violating fixture and a clean control. A **test set**, derived to
   have something to build against — not an audited corpus and not a spec. See
   "The 22 rules are a test set, not a spec".
@@ -810,9 +811,11 @@ at Stop does not tell the agent what the judge saw (Next, item 1).
 - A calibration target: see below.
 - The call sites themselves (`agentic-qa init`), each behind its own flag: a
   tracked `hooks/pre-commit` running the free tier on staged files, activated on
-  every clone by a `prepare` script that sets `core.hooksPath`, and a Claude Code
-  `PostToolUse` hook that reports violations in changed files back to the model
-  after every edit. It installs neither unless asked, and never overwrites an
+  every clone by a `prepare` script that sets `core.hooksPath`, and Claude Code
+  `SessionStart` and `Stop` hooks. (A `PostToolUse` hook that reported after
+  every edit was removed; see "The hooks enforce the corpus, and the gauntlet is
+  on demand".) It installs neither unless asked, reports only call sites a repo
+  lacks, and never overwrites an
   existing file. Verified end to end: in a scratch repo, `init --git-hook`
   followed by `git commit` of a file storing a token in `localStorage` is
   refused by the hook.
@@ -862,9 +865,9 @@ at Stop does not tell the agent what the judge saw (Next, item 1).
   strings must exempt test files", which the old pattern had never followed.
 - The turn-boundary call site (`agentic-qa stop`): a `Stop` hook that checks
   everything the turn changed, blocks the agent from finishing while findings
-  stand, and blocks at most once per turn. Mechanical first, with the judgment
-  tiers skipped entirely when a pattern already found an error, and skipped
-  outside a git repo where there is no way to tell what changed. It gates
+  stand, and blocks at most once per turn. Mechanical corpus rules only, and
+  only the engines that enforce one on the changed files: judgment was tried
+  here and did not fit a turn (trials 1 and 2, Next item 4). It gates
   through a top-level `decision` field and always exits zero, so a crash
   reports rather than trapping the turn. Until Phase 1 that field was nested
   where Claude Code ignores it, so the hook never actually blocked; see
@@ -874,33 +877,39 @@ at Stop does not tell the agent what the judge saw (Next, item 1).
   cannot install — opengrep, gitleaks — and the community rules are downloaded
   on first use into `~/.cache/agentic-qa/`, each pinned (binaries by version and
   SHA-256, rules by commit), with `agentic-qa setup` to do it ahead of time and
-  CI caching the result. opengrep runs at Stop, on commit and in CI but not per
-  edit, and loads only the rule sets for the kinds of file changed. Its notes
-  reach the person at Stop. A Stop after a one-file change in `orders-admin`
-  takes about 4.6s; the per-edit hook stays under a second.
-- The escape hatch closed at the automatic call sites: the per-edit hook and
-  Stop honour only a `qa-ignore` committed in `HEAD`, and show every refused one.
+  CI caching the result. opengrep loads only the rule sets for the kinds of file
+  changed, and runs wherever it enforces a corpus rule — nowhere automatic
+  today, since it claims none — and always in `agentic-qa gauntlet`.
+- The escape hatch closed at the automatic call site: Stop honours only a
+  `qa-ignore` committed in `HEAD`, and shows the person every refused one if the
+  finding still stands when the turn ends.
   See "Only a person makes an exception, and committing is how".
 - Real-session smoke tests for the agent-facing call sites (`npm run smoke`,
-  `smoke/hooks.smoke.ts`). Five headless haiku sessions run in parallel against
+  `smoke/hooks.smoke.ts`). Six headless haiku sessions run in parallel against
   throwaway repos whose hooks `init` wrote, pointed at this checkout's build, and
   assert on the transcript rather than the payload: Stop holds the turn on a
   corpus error and the agent receives the reason; the second pass lets go and
-  the person is told; notes and a failure to run never hold the turn; an
-  uncommitted `qa-ignore` releases nothing and the person sees it; the per-edit
-  hook's report reaches the agent, proven by the agent repeating a rule id it
-  could not otherwise know. About 30s and $0.13 a run. Shown to fail: with
+  the person is told; unclaimed scanner findings and a failure to run never hold
+  the turn; an uncommitted `qa-ignore` releases nothing and the person sees it;
+  an agent preparing auth work reads the auth chapter, and one doing arithmetic
+  reads nothing. About a minute a run. Sessions run with no tools, or Read only,
+  after a blocked agent spent its budget hunting for a way to edit. Shown to fail: with
   `decision` nested back inside `hookSpecificOutput`, the three tests that need
   Stop to hold the turn fail. Local only, deliberately: CI would need an API key
   and bill every push, which is worth it only if a hook change ever ships
-  without a run. Stop runs `--mechanical` there, so the hook makes no model
-  calls of its own; the judgment tiers leave through the same output code.
+  without a run.
 
 - One table for what runs where (`src/sites.ts`): each call site is a command
-  (`hook`, `stop`, `commit`, `ci`) that reads its row, a repo overrides cells
+  (`stop`, `commit`, `ci`) that reads its row, a repo overrides cells
   under `callSites` in `qa.config.yaml`, and the README's table is rendered from
-  the defaults and held to them by a test. Commit now runs the fast scanners
-  only. See "One table decides what runs where".
+  the defaults and held to them by a test. Commit runs the fast scanners only.
+  See "One table decides what runs where".
+- Corpus-only call sites and `agentic-qa gauntlet`: Stop, commit and CI report
+  corpus findings only; the gauntlet command runs every engine, grouped by rule,
+  never blocking. Commit and CI can opt in to blocking on it. See "The hooks
+  enforce the corpus, and the gauntlet is on demand".
+- The guide (`guide/`, twelve chapters) and session-start steering: an index of
+  its chapters the agent reads from on demand. See Next, item 2.
 ---
 
 ## Next
@@ -1020,6 +1029,10 @@ on and ends with the agent running the review. Compare against trials 1 and 2:
 what the review finds, whether steering prevented it, what the agent does with
 findings, and how long and how much the review takes.
 
+
+Each trial's output is kept on a branch in `orders-admin` (`trial/orders-api`,
+`trial/orders-api-2`) and its main is untouched; transcripts were not kept.
+Judge timing scripts are in `fixtures/probes/judge-latency/`.
 
 **Trial 1, 2026-09-17** (prompt in `fixtures/probes/trial-orders-api/`): a
 headless Sonnet session built an orders API — repository, service, handlers, 18
@@ -1385,7 +1398,9 @@ designed.
 
 ## Open questions
 
-- **Is a handler test that mocks its service weak?** Trial 1's judge said yes
+- **Is a handler test that mocks its service weak?** Deferred by the owner: the
+  review sees the handler and service together, which may settle it without a
+  policy. Revisit if the review still flags correct handler tests. Trial 1's judge said yes
   twice: "responds 409 when the order is not a draft" passes even if the
   service stopped detecting non-drafts, because the service is mocked. True, and
   it is also the ordinary way to test one layer. Either the judge reads a

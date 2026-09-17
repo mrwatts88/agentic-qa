@@ -227,9 +227,9 @@ grounding needs.
   concurrently.** Tool hooks such as PostToolUse fire inside subagents too, and
   parallel subagents have no documented ordering, so two copies can run at once.
   The judgment tiers write `.qa/rules.json` and `.qa/contracts.json`, and a lost
-  write there is a verdict silently discarded from a committed file, so they
-  belong only in `Stop` — which fires once, for the main agent, at the end of a
-  turn. Relevant again the moment anyone adds a tool hook back.
+  write there is a verdict silently discarded from a committed file, so they run
+  only from a command invoked once: `rules --llm`, `contracts`, `ci`, and the
+  review when it exists. Relevant again the moment anyone adds a tool hook.
 - **Hooks anchor to `CLAUDE_PROJECT_DIR`, not the process cwd.** Claude Code
   runs hooks in the session's current directory, which moves whenever the agent
   `cd`s. This repo's own Stop hook once failed with "cannot find module
@@ -359,6 +359,9 @@ grounding needs.
   for `--no-verify`, loosening a rule, or narrowing a scope to make a finding go
   away.
 
+- **Write to the owner plainly and briefly.** Short answers in ordinary words,
+  numbered where there are steps. No jargon, no bullets that pad, no restating
+  what was just said. When asked for thoughts or a yes/no, give that and stop.
 - **Report open problems first.** When work is done, the first thing the owner
   reads is what is still wrong, unfixed, unverified or assumed, with anything
   that needs their decision. How it works comes after, briefly. A problem found
@@ -399,3 +402,9 @@ MCP servers while leaving OAuth intact, so no `ANTHROPIC_API_KEY` is needed.
 Measured on one identical judgment with sonnet: $0.083 baseline, $0.020 with
 `--strict-mcp-config`, $0.012 with `--safe-mode`, $0.008 on haiku. Do not use
 `--bare`: it is cheaper still but forces API-key auth.
+
+That $0.008 was a small judgment. Real ones on trial 2's code cost $0.01-0.03
+and took 10-50s each on haiku, nearly all of it thinking, which `--effort` did
+not change (`fixtures/probes/judge-latency/`). The review is planned on Opus 5
+at high effort, one call per change, because the owner's plan covers it and a
+whole-change review needs the stronger model.
