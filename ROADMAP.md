@@ -977,6 +977,13 @@ departs from.
   in one Opus call beside a normal diff, so a routing miss costs focus, never
   coverage: past a small change, include every chapter whose area the change
   plausibly touches rather than the fewest.
+- **Test contracts stay a feature; only the judging moves.** The review judges
+  every changed test's description against its assertions, now with the code
+  under test in view, and returns the same verdicts: upheld, violated,
+  unverifiable. It writes them to `.qa/contracts.json` with the same records,
+  ids and version check, so the ledger, `failOnUnverifiable`, descriptions as
+  a readable account of coverage, and `mutate` grounding all keep working.
+  `agentic-qa contracts` remains as the way to judge a whole suite.
 - **Judgment rules become evaluation, not prompt.** Classified concepts give the
   eval corpora their known answers and the coverage report its rows; the review
   judges from the prose.

@@ -11,6 +11,48 @@ What "right" means is written down in a guide to building software, which ships
 in `guide/`. The agent is pointed at it before it writes, the parts a tool can
 check are checked as it works, and your tests are checked against what they say.
 
+## How it fits together
+
+What agentic-qa is when finished. Most of it is built; the rest is marked.
+
+1. **The guide** says how software should be built, one chapter per area. It
+   ships in the package, so updating the dependency updates it.
+2. **Setup** is `init`, which adds only the call sites you ask for and never
+   overwrites your files.
+3. **Session start:** the agent gets an index of the guide and reads the
+   chapters its work touches, before it writes anything.
+4. **End of every turn:** the free checks (scanners and pattern rules, the parts
+   of the guide a tool can check) run on what changed. A broken rule blocks the
+   agent once, with what to fix; if it still stands, you are told. No model
+   calls.
+5. **Commit:** the same free checks on staged files. Optionally, the gauntlet
+   too.
+6. **Ready for a PR:** the agent runs `agentic-qa review`. A fresh Opus session
+   that did not write the code judges the whole change against the guide
+   chapters it touches, and judges every changed test's contract (below). The
+   findings go back to the agent, which fixes them or says where it disagrees.
+   *Not built yet.*
+7. **Test contracts:** every test's description is a claim about what it
+   proves. Each is judged **upheld** (a broken implementation would fail it),
+   **violated** (it would still pass) or **unverifiable** (too vague to prove
+   wrong). Verdicts are committed in `.qa/contracts.json`, so reading the
+   descriptions tells you what the suite really covers. Built as a per-test
+   judge today (`agentic-qa contracts`); step 6 takes over the judging.
+8. **Proof:** `agentic-qa mutate` tests a verdict for real by breaking the code
+   the way the description says and running the test. When it disagrees with
+   the judge, the judge was wrong.
+9. **CI:** every pull request gets the free checks and the review, so nothing
+   merges unreviewed even if nobody ran it locally. *The review part is not
+   built yet; CI runs today's per-rule judgment and contracts instead.*
+10. **Exceptions:** a `qa-ignore` comment with a reason, which counts only once
+    a person commits it. An agent cannot excuse itself.
+11. **The gauntlet:** thousands of community scanner rules, never shown
+    automatically. You triage them with an agent on demand, and the good ones
+    become free checks.
+12. **The checker is checked:** each check is scored against examples with
+    known answers, false positives weighed heaviest, and re-scored when a prompt
+    or model changes. *Scoring for the review is not built yet.*
+
 ## Quick start
 
 In the repo you want checked:
