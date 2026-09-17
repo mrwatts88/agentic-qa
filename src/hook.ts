@@ -5,6 +5,7 @@ import { loadRules } from "./rules/load.js";
 import { selectFiles } from "./rules/select.js";
 import { runMechanical } from "./rules/mechanical.js";
 import { defaultAdapters } from "./rules/adapters/index.js";
+import { committedOnly, ExceptionGate, type RefusedException } from "./rules/exceptions.js";
 
 /**
  * The agent-facing call site: a PostToolUse hook that runs after every edit.
@@ -33,6 +34,22 @@ function emit(additionalContext: string): void {
 }
 
 const GAUNTLET_LIMIT = 10;
+
+/**
+ * Addressed to the agent, which is the likeliest author of an exception it has
+ * no business approving. It is told what an exception is so that it can
+ * propose one, and told plainly that writing one does not release anything.
+ */
+export const EXCEPTIONS_ARE_APPROVED = [
+  "If you believe one is wrong, say so to the person rather than working around it.",
+  "An exception is a comment naming the rule, and it counts only once a person has",
+  "committed it:",
+  "  // qa-ignore: <rule-id> - why this case is different",
+].join("\n");
+
+export function refusedLines(refused: RefusedException[]): string[] {
+  return refused.map((r) => `- ${r.file}:${r.line} qa-ignore for ${r.ruleId}`);
+}
 
 /** Paths git reports as modified, added or untracked. */
 export function changedFiles(cwd: string): string[] | undefined {
@@ -130,8 +147,9 @@ export async function runHook(cwd: string, filePath?: string): Promise<number> {
 
     // The fast engines only: this fires on every edit. The slow ones run at the
     // turn boundary, which is where their corpus rules block anyway.
-    const { findings, unenforced } = await runMechanical(cwd, files, rules, {
+    const { findings, unenforced, refused } = await runMechanical(cwd, files, rules, {
       adapters: defaultAdapters({ fast: true }),
+      exceptions: new ExceptionGate(committedOnly(cwd)),
     });
     const corpus = findings.filter((f) => f.origin === "corpus");
     const gauntlet = findings.filter((f) => f.origin === "gauntlet");
@@ -146,9 +164,8 @@ export async function runHook(cwd: string, filePath?: string): Promise<number> {
           "",
           ...corpus.map((f) => `- ${f.file}:${f.line} ${f.statement} [${f.ruleId}]`),
           "",
-          "Fix these before moving on. If one is genuinely intended, record it with",
-          "a comment naming the rule, for example:",
-          "  // qa-ignore: <rule-id> - why this case is different",
+          "Fix these before moving on.",
+          EXCEPTIONS_ARE_APPROVED,
         ].join("\n"),
       );
     }
@@ -160,10 +177,21 @@ export async function runHook(cwd: string, filePath?: string): Promise<number> {
       sections.push(
         [
           `Linters also noted ${gauntlet.length} thing(s) in the same code. These do not block;`,
-          "fix the ones that are real, and silence one deliberately with qa-ignore and its id:",
+          "fix the ones that are real:",
           "",
           ...shown.map((f) => `- ${f.file}:${f.line} ${f.statement} [${f.ruleId}]`),
           ...(more > 0 ? [`- ...and ${more} more`] : []),
+        ].join("\n"),
+      );
+    }
+
+    if (refused.length) {
+      sections.push(
+        [
+          "These qa-ignore comments are not committed, so they do not count yet.",
+          "Whether to make an exception is the person's decision, not yours:",
+          "",
+          ...refusedLines(refused),
         ].join("\n"),
       );
     }

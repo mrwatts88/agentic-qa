@@ -21,16 +21,21 @@ npm run build                 # tsc -> dist/
 npm test                      # vitest (fixtures/ excluded)
 node dist/cli.js contracts    # judge tests against their descriptions
 node dist/cli.js mutate       # break the code and check the tests notice
-node dist/cli.js eval         # score the judge against known-correct verdicts
+node dist/cli.js eval         # score the contract judge (not the rules)
+node dist/cli.js rules        # run the rules tiers; --llm adds judgment
 node dist/cli.js setup        # download the pinned scanners and rules now
 ```
 
-Two fixture corpora, used for different things:
+Four fixture corpora, used for different things:
 
 ```
-cd fixtures/sample   && node ../../dist/cli.js contracts   # judging only
-cd fixtures/runnable && node ../../dist/cli.js mutate      # judging + experiment
+cd fixtures/sample    && node ../../dist/cli.js contracts   # contract judging only
+cd fixtures/runnable  && node ../../dist/cli.js mutate      # judging + experiment
+cd fixtures/rules     && node ../../dist/cli.js rules --expected expected.json        # score mechanical rules, free
+cd fixtures/rules-llm && node ../../dist/cli.js rules --llm --expected expected.json  # score judgment rules, costs money
 ```
+
+`fixtures/probes` is not a corpus: kept experiments, not scored.
 
 `fixtures/sample` deliberately imports a module that does not exist, so its
 tests can never run. `fixtures/runnable` is a real green suite, which mutation
@@ -260,6 +265,16 @@ grounding needs.
   exact line there would make the hatch work only by luck.
   Both tiers share `src/rules/ignore.ts` so they cannot drift on what an
   exception looks like.
+- **Only a person makes an exception.** The per-edit hook and Stop honour a
+  `qa-ignore` only when its comment line is unchanged since `HEAD` (staged is
+  not committed), and Stop shows every refused one to the person. A blocked
+  agent was observed proposing one with a false reason; nothing can check a
+  reason, only who committed it. `rules` — commit and CI — honours every
+  exception it sees. Outside git every exception counts, since nothing can be
+  committed there. The policy is `src/rules/exceptions.ts`; never let a call
+  site's text invite the agent to write its own. The README recommends a
+  Claude Code `ask` rule for `git commit`, but `init` does not write it: a
+  person's permissions are theirs to set.
 - **A new mechanical rule needs a clean control file, not just a violating
   one.** `fixtures/rules` exists to prove a rule stays silent on correct code
   that contains the same construct. A rule with no clean control has not been

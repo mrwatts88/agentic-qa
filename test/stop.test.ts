@@ -78,6 +78,54 @@ describe("the Stop hook", () => {
   });
 
   /**
+   * Observed in the first headless run of a blocking Stop hook: the agent's
+   * cheapest way out was a one-line exception with a false reason. Writing one
+   * must not release the block, and the person must see that it was tried.
+   */
+  describe("exceptions written during the turn", () => {
+    const EXCUSED =
+      '// qa-ignore: fe.storage.no-token-in-local-storage - this is test code\n' +
+      'localStorage.setItem("authToken", token);\n';
+
+    it("still blocks, and shows the attempt to the person", async () => {
+      git("init");
+      write("session.ts", EXCUSED);
+
+      await runStop(dir, FIRST);
+      const payload = JSON.parse(output);
+
+      expect(payload.decision).toBe("block");
+      expect(payload.reason).toContain("session.ts:1 qa-ignore for fe.storage.no-token-in-local-storage");
+      expect(payload.systemMessage).toContain("not committed");
+      expect(payload.systemMessage).toContain("session.ts:1");
+    });
+
+    it("keeps showing the attempt on the pass that lets the turn end", async () => {
+      git("init");
+      write("session.ts", EXCUSED);
+
+      await runStop(dir, AGAIN);
+      const payload = JSON.parse(output);
+
+      expect(payload.decision).toBeUndefined();
+      expect(payload.systemMessage).toContain("session.ts:1 qa-ignore for fe.storage.no-token-in-local-storage");
+    });
+
+    it("honours an exception once a person has committed it", async () => {
+      git("init");
+      write("session.ts", EXCUSED);
+      git("add", "-A");
+      git("-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-m", "approved");
+      // The file changes elsewhere, so it is in this turn's scope again.
+      write("session.ts", `${EXCUSED}export const later = 1;\n`);
+
+      await runStop(dir, FIRST);
+
+      expect(output).toBe("");
+    });
+  });
+
+  /**
    * The whole point of stop_hook_active. Blocking a second time is how a
    * session ends up unable to finish, so the second pass says the same thing
    * and lets go.

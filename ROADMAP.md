@@ -206,6 +206,7 @@ against probe hooks rather than by reading again:
 | `hookSpecificOutput.decision` | ignored |
 | `hookSpecificOutput.additionalContext` | **also continues the agent** |
 | `systemMessage` | shown to the person; the turn ends |
+| top-level `decision: "block"` + `systemMessage` | held, and the message is shown to the person as well |
 
 The second row is the bug. The third mattered as much: the "report once and let
 go" pass used `additionalContext`, which would have kept the agent going, a
@@ -215,6 +216,67 @@ to the person through `systemMessage`. After the fix, a real headless session
 asked only to say hello was held on an uncommitted violation, dealt with it, and
 was released. **A hook contract is verified by running a real session, not by
 reading the docs.**
+
+### Only a person makes an exception, and committing is how
+
+**Observed, not hypothetical.** Once Stop really blocked, the first headless
+test showed an agent without edit permission proposing to silence a real
+violation in production code with `// qa-ignore: ... - this is test code`. The
+reason was false. A blocked agent's cheapest way out is a one-line comment, and
+nothing can check the reason, because the reason is the very text written to
+persuade — asking a model whether it is honest just moves the persuasion. The
+gate that exists to hold agents contained a bypass that agents are the likeliest
+to use.
+
+What can be checked is who made an exception take effect:
+
+- **The automatic call sites honour only committed exceptions.** The per-edit
+  hook and Stop treat a `qa-ignore` whose comment line was added or changed since
+  `HEAD` as absent, so the finding stands and Stop still blocks. Staged counts as
+  uncommitted: an agent can `git add` as easily as it can edit. Judged by line,
+  from `git diff HEAD -U0`, not by whether the same text appears somewhere in the
+  committed file, so moving an approved comment onto different code is a new
+  exception. A file not in `HEAD` — untracked, renamed, or in a repo with no
+  commits — has no committed exceptions at all.
+- **Every refused one is shown to the person**, through `systemMessage` at Stop,
+  on the blocking pass and the one that lets go, so an attempt is visible rather
+  than found later in a diff. The agent is told too, and told that exceptions are
+  the person's decision.
+- **Commit and CI honour every exception they see.** What they see is staged or
+  committed, and committing is the act of approval.
+- **Outside a git repository every exception counts.** Nothing can be committed
+  there, so refusing would remove the hatch rather than guard it.
+
+git is consulted only when a comment actually matches a finding, so a run with no
+exceptions in play costs nothing extra. The policy lives in
+`src/rules/exceptions.ts`; `src/rules/ignore.ts` still only says where a comment
+must sit.
+
+Not done, on purpose: tightening where the comment may sit. Pattern and scanner
+findings already require the same line or the one above; only judgment findings
+accept it anywhere in the file, because a judge's cited line is advisory. An
+agent can put a comment on the right line as easily as the wrong one, so
+placement was never the protection.
+
+**The honest limit.** An agent with an unrestricted shell can run `git commit`
+itself, so "committed" is only as strong as the agent's permission to commit.
+The recommended setup is a Claude Code permission rule that asks before
+`git commit`. `init` does not install it, deliberately: permissions are the
+person's own configuration, and a setup command that edits them is the
+unrequested change this tool objects to. It is also a speed bump rather than a
+lock, since it matches how a command starts. Whether stronger approval is worth
+building is an open question.
+
+Two known edges, accepted for now and worth watching in real use (item 3). A
+renamed file has no committed exceptions until the rename is committed. And an
+exception a person asked the agent to add is listed as refused on every turn
+until it is committed, which could read as nagging.
+
+Verified in a headless haiku session with Edit, Write and Bash denied, against a
+file carrying an uncommitted `qa-ignore` with a false reason: the turn was held,
+the person was shown the refused exception on both passes, and the agent told
+the person the comment would not count until committed and asked what to do,
+rather than writing another.
 
 ### Hooks reach a repo the way husky's do
 
@@ -550,9 +612,9 @@ install provisioned automatically. Four corpus rules are delegated to them
 other mechanical rule is still a pattern, some on purpose. opengrep claims no
 corpus rule yet. `mutate` is still the hand-rolled version rather than Stryker.
 
-Known not to be trustworthy yet, and first in Next: an agent can release a Stop
-block by writing its own `qa-ignore`, and no call site is tested against a real
-session. Everything listed below runs.
+Known not to be trustworthy yet, and first in Next: no call site is tested
+against a real session by anything that runs repeatably. Everything listed below
+runs.
 
 **Done and verified.**
 
@@ -657,6 +719,9 @@ session. Everything listed below runs.
   edit, and loads only the rule sets for the kinds of file changed. Its notes
   reach the person at Stop. A Stop after a one-file change in `orders-admin`
   takes about 4.6s; the per-edit hook stays under a second.
+- The escape hatch closed at the automatic call sites: the per-edit hook and
+  Stop honour only a `qa-ignore` committed in `HEAD`, and show every refused one.
+  See "Only a person makes an exception, and committing is how".
 
 ---
 
@@ -668,41 +733,7 @@ whether a gate can be believed, whether it can be configured, and whether it
 survives real use. Writing rules into a machine that cannot yet be trusted only
 produces more output nobody can rely on.
 
-### 1. Close the escape hatch at the automatic call sites
-
-**Observed, not hypothetical.** Once Stop really blocked, the first headless
-test showed an agent without edit permission proposing to silence a real
-violation in production code with `// qa-ignore: ... - this is test code`. The
-reason was false. A blocked agent's cheapest way out is a one-line comment, and
-nothing checks the reason. The gate that exists to hold agents contains a bypass
-that agents are the likeliest to use.
-
-Where an exception may come from, decided:
-
-- **Automatic runs do not honour an uncommitted `qa-ignore`.** The per-edit hook
-  and Stop treat a `qa-ignore` that is not in `HEAD` — added or changed in the
-  working tree — as absent, so the finding still stands and still blocks.
-- **Those runs show every new one to the person**, through `systemMessage` at
-  Stop, so an attempted exception is visible rather than silent.
-- **An exception exists because a person chose it:** either they tell the agent
-  to add one, or they add it themselves. It takes effect once committed.
-- **Commit and CI honour committed exceptions**, as today. Staging and
-  committing is the act of approval.
-
-Not done, on purpose: tightening where the comment may sit. Pattern and scanner
-findings already require the same line or the one above; only judgment findings
-accept it anywhere in the file, because a judge's cited line is advisory. An
-agent can put a comment on the right line as easily as the wrong one, so
-placement was never the protection. Nor is asking a model whether the reason is
-honest: the reason is the very text the agent writes to persuade.
-
-**The honest limit.** An agent with an unrestricted shell can run `git commit`
-itself, so "committed" is only as strong as the agent's permission to commit.
-The recommended setup is a Claude Code permission rule that asks before
-`git commit`; document it with the feature. Whether stronger approval is worth
-building is an open question below.
-
-### 2. Verify every call site against a real session
+### 1. Verify every call site against a real session
 
 The Stop hook shipped unable to block, with passing tests, because the tests
 asserted the JSON it emitted rather than what Claude Code does with it. The only
@@ -716,7 +747,8 @@ than the payload:
 - Stop does not hold the turn for notes, or when it fails to run.
 - The per-edit hook's report reaches the agent. It demonstrably does — its
   notes have arrived throughout development sessions — but nothing asserts it.
-- An uncommitted `qa-ignore` does not release a block (item 1).
+- An uncommitted `qa-ignore` does not release a block, and the person is shown
+  the attempt.
 
 The probe hooks that exposed the Stop bug are in
 `fixtures/probes/stop-hook-shapes`, with the recipe.
@@ -726,7 +758,7 @@ changing any hook output, and probably a CI job limited to changes under
 `src/hook.ts`, `src/stop.ts` and `src/init.ts`, when `ANTHROPIC_API_KEY` is
 present.
 
-### 3. One table for what runs where
+### 2. One table for what runs where
 
 Today nothing defines it. It is spread across code and generated text:
 
@@ -769,7 +801,7 @@ The shape is three layers, each owned by whoever actually knows the answer:
 separate logic. A test checks the README's table against the defaults, so the
 documentation cannot drift from the code again.
 
-### 4. Use it for real on `orders-admin`
+### 3. Use it for real on `orders-admin`
 
 `orders-admin` is on the current version, with the working Stop hook. Build an
 actual feature there with the hooks live, and record what nothing else can show:
@@ -780,12 +812,15 @@ actual feature there with the hooks live, and record what nothing else can show:
   cost per turn, and how often a wrong verdict now holds the agent.
 - Which blocks were right, which were noise, and which notes anyone acted on.
 - Stop and per-edit latency during real work, not probes.
-- Whether the escape-hatch behaviour from item 1 recurs when the agent can edit.
+- Whether agents still reach for `qa-ignore` when they can edit, now that an
+  uncommitted one releases nothing, and whether any try `git commit`.
+- Whether the refused-exception list is useful or nagging when the person asked
+  for the exception and just has not committed yet.
 
 This is the calibration the fixtures cannot provide, and its findings will
 re-rank the items below it.
 
-### 5. CI documentation a consuming repo can follow
+### 4. CI documentation a consuming repo can follow
 
 `init` deliberately does not write CI (see "CI is documented, not generated"),
 but the steps have multiplied: install, `setup`, caching the tool cache, the
@@ -796,7 +831,7 @@ consuming repo into the README, and prove it by running it in a real consuming
 repo before documenting it; `orders-admin` has no remote, so that needs one.
 Other providers get the command list, not examples.
 
-### 6. Adoption on an existing repo: the baseline ratchet
+### 5. Adoption on an existing repo: the baseline ratchet
 
 Half-solved by the severity split, and made more urgent by it. Pointing the
 gauntlet at an existing repo produces far more findings than 22 hand-written
@@ -809,7 +844,7 @@ and gets switched off the same afternoon. Snapshot the existing violations, fail
 only on new ones, and require the count to trend down. Every successful linter
 adoption works this way. It has to be designed in, not bolted on.
 
-### 7. Mutation grounding: adopt Stryker, then give it a trigger
+### 6. Mutation grounding: adopt Stryker, then give it a trigger
 
 Two problems, and the survey solved one of them. **StrykerJS** is mature mutation
 testing for JS/TS with deterministic operators, `--incremental` backed by its own
@@ -831,7 +866,7 @@ verdict changed since the last run, which the committed ledger already knows.
 Needs a `--changed` selection over the ledger, and a decision about where it is
 invoked from.
 
-### 8. Packaging and configuration
+### 7. Packaging and configuration
 
 Mostly done. The package builds on install via `prepare`, ships `dist/` and the
 rules corpus, and has been verified by packing it, installing the tarball into a
@@ -850,17 +885,17 @@ What is left:
 - **Versioning the rules corpus separately** from the tool, so rules can be
   updated without shipping a new binary, and a repo can pin them.
 - **Stack profiles, framework gauntlets and a personal mode.** Designed in
-  outline under "Raised, not yet designed"; all three build on item 3's table.
+  outline under "Raised, not yet designed"; all three build on item 2's table.
 
-### 9. Speed: a long-lived process
+### 8. Speed: a long-lived process
 
 Not needed yet. A fresh process per hook call spends almost all its time
 loading: eslint takes about 500ms to load and 20ms to lint, opengrep seconds to
 load and milliseconds to scan. A long-lived process would bring a per-edit check
 near 50ms and let Stop run opengrep without its load cost. Worth it only once
-item 4 shows latency is actually hurting.
+item 3 shows latency is actually hurting.
 
-### 10. Make the gauntlet robust where no engine covers the stack
+### 9. Make the gauntlet robust where no engine covers the stack
 
 Separate from the corpus. The gauntlet is meant to be broad coverage for free,
 and it has holes wherever the engines and their plugins do not know the target
@@ -879,9 +914,9 @@ stack:
 The probe app behind these measurements is `fixtures/probes/gauntlet-hono-express`.
 
 The rules written here are gauntlet rules, not corpus promises: they widen what
-is noticed, and only a corpus claim (item 11) makes one block.
+is noticed, and only a corpus claim (item 10) makes one block.
 
-### 11. The corpus, last
+### 10. The corpus, last
 
 Everything that writes, moves or retires a rule. Last because a rule is only
 worth as much as the machine that enforces it.
@@ -1031,7 +1066,7 @@ Recorded from the build, so they are not relitigated.
   tsconfig the checked repo may not have, and a program build per run.
 - **Gauntlet noise is already measurable.** On this repo: 31 notes, including a
   real unused import, and `sonarjs/no-os-command-from-path` on every
-  `execFileSync("git")`, which is noise here. The answer is the ratchet (item 6)
+  `execFileSync("git")`, which is noise here. The answer is the ratchet (item 5)
   and trimming the preset deliberately, not filtering output to the corpus.
 
 ### The judgment tier is the part with no free incumbent
@@ -1070,8 +1105,8 @@ designed.
 - **Escaped-defect log.** When a real bug ships, ask which rule should have
   caught it. That is the feedback loop that makes the corpus earn its keep
   instead of just accreting. Worth building once there is a real repo.
-- **How `qa-ignore` gets audited, and who approves one.** Item 1 settles what
-  automatic runs honour: only committed exceptions. Two things stay open. A repo
+- **How `qa-ignore` gets audited, and who approves one.** "Only a person makes
+  an exception" settles what automatic runs honour: only committed exceptions. Two things stay open. A repo
   where exceptions accumulate has quietly switched its rules off, so counting
   them and watching the trend is probably still needed, in CI and earlier. And
   approval is only as strong as the agent's permission to commit; whether a
@@ -1119,6 +1154,6 @@ both — but none of them is settled.
   observability and ops, performance and reliability). Infrastructure has no
   pack: its one Terraform rule, `sec.no-world-open-security-group`, is filed
   under security. Creating empty packs now would fix a taxonomy before the
-  classification pass (item 11) has shown what the concepts actually are; the
+  classification pass (item 10) has shown what the concepts actually are; the
   pack list is more likely to fall out of that pass than to precede it. An
   `infra` pack is the one that is clearly missing already.

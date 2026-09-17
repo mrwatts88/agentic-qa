@@ -6,6 +6,9 @@
  *
  * Without a way to switch off one rule with a recorded reason, the first false
  * positive gets the whole check disabled instead of the single rule.
+ *
+ * This file only says where an exception is written. Whether a written one
+ * counts is `exceptions.ts`: automatic runs honour only committed ones.
  */
 /**
  * Also matches gauntlet ids such as `eslint:@typescript-eslint/no-explicit-any`,
@@ -22,16 +25,23 @@ function namesRule(line: string | undefined, ruleId: string): boolean {
 /**
  * Pattern tier: the comment must sit on the offending line or the one above it,
  * because a pattern finding points at a specific line and an exception should
- * be visible next to what it excuses.
+ * be visible next to what it excuses. Returns the indices of the lines that
+ * carry one.
  */
+export function ignoreLinesAt(
+  lines: string[],
+  lineIndex: number,
+  ruleId: string,
+): number[] {
+  return [lineIndex, lineIndex - 1].filter((i) => i >= 0 && namesRule(lines[i], ruleId));
+}
+
 export function isIgnoredAtLine(
   lines: string[],
   lineIndex: number,
   ruleId: string,
 ): boolean {
-  return (
-    namesRule(lines[lineIndex], ruleId) || namesRule(lines[lineIndex - 1], ruleId)
-  );
+  return ignoreLinesAt(lines, lineIndex, ruleId).length > 0;
 }
 
 /**
@@ -41,8 +51,14 @@ export function isIgnoredAtLine(
  * it cites is advisory rather than exact. Requiring the comment to land on that
  * line would make the escape hatch work only by luck.
  */
+export function ignoreLinesInFile(text: string, ruleId: string): number[] {
+  const found: number[] = [];
+  text.split("\n").forEach((line, i) => {
+    if (namesRule(line, ruleId)) found.push(i);
+  });
+  return found;
+}
+
 export function isIgnoredInFile(text: string, ruleId: string): boolean {
-  return text
-    .split("\n")
-    .some((line) => namesRule(line, ruleId));
+  return ignoreLinesInFile(text, ruleId).length > 0;
 }

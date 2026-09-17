@@ -109,6 +109,18 @@ localStorage.setItem("authToken", token); // qa-ignore: fe.storage.no-token-in-l
 That hatch matters: without it, the first false positive gets the whole checker
 disabled instead of the one rule.
 
+An exception takes effect once it is **committed**. The per-edit hook and the
+Stop hook ignore a `qa-ignore` added or changed since the last commit, so the
+finding still stands, and Stop shows you every one it refused. That stops a
+blocked agent from writing its own way out. Commit and CI honour every exception
+they see. Because an agent with an unrestricted shell can commit too, set Claude
+Code to ask before `git commit`. `init` does not add this for you; put it in your
+own settings, for one repo or for all of them:
+
+```json
+{ "permissions": { "ask": ["Bash(git commit:*)"] } }
+```
+
 ### 2. Test contracts
 
 Every test carries a sentence saying what it checks — its title, or a longer

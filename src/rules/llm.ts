@@ -7,7 +7,7 @@ import { judgeRule, RULE_JUDGE_VERSION } from "../judge.js";
 import { pool } from "../pool.js";
 import type { Finding, LlmEnforcement, Rule } from "./types.js";
 import { rulesForFile } from "./route.js";
-import { isIgnoredInFile } from "./ignore.js";
+import { ExceptionGate, type RefusedException } from "./exceptions.js";
 
 export const LLM_LEDGER_PATH = ".qa/rules.json";
 
@@ -146,6 +146,8 @@ export interface LlmSummary {
   cached: number;
   skipped: number;
   costUsd: number;
+  /** qa-ignore comments that matched a violation but did not count. */
+  refused: RefusedException[];
 }
 
 export async function runLlmRules(
@@ -156,6 +158,8 @@ export async function runLlmRules(
   all = false,
   /** True when the caller narrowed the file set, which disables pruning. */
   scoped = false,
+  /** Which exceptions count; every one unless an automatic call site says otherwise. */
+  gate = new ExceptionGate(),
 ): Promise<LlmSummary> {
   const ledger = loadLlmLedger(cwd);
   const model = config.judge.model;
@@ -239,7 +243,7 @@ export async function runLlmRules(
     // happened to be fresh.
     .filter((r) => {
       try {
-        return !isIgnoredInFile(readFileSync(resolve(cwd, r.file), "utf8"), r.ruleId);
+        return !gate.excusesInFile(r.file, readFileSync(resolve(cwd, r.file), "utf8"), r.ruleId);
       } catch {
         return true;
       }
@@ -265,5 +269,6 @@ export async function runLlmRules(
     cached: relevant.length - jobs.length > 0 ? relevant.length - jobs.length : 0,
     skipped,
     costUsd,
+    refused: gate.refused(),
   };
 }

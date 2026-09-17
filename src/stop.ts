@@ -8,7 +8,8 @@ import type { Finding } from "./rules/types.js";
 import { defaultAdapters } from "./rules/adapters/index.js";
 import { runLlmRules } from "./rules/llm.js";
 import { checkContracts } from "./contracts/check.js";
-import { changedFiles } from "./hook.js";
+import { changedFiles, EXCEPTIONS_ARE_APPROVED, refusedLines } from "./hook.js";
+import { committedOnly, ExceptionGate } from "./rules/exceptions.js";
 
 /**
  * The turn boundary: a Stop hook that runs when the agent finishes responding.
@@ -54,11 +55,7 @@ function emit(payload: unknown): void {
   process.stdout.write(JSON.stringify(payload) + "\n");
 }
 
-const FIX_OR_EXCUSE = [
-  "Fix these before finishing. If one is genuinely intended, record it with a",
-  "comment naming the rule, for example:",
-  "  // qa-ignore: <rule-id> - why this case is different",
-].join("\n");
+const FIX_OR_EXCUSE = `Fix these before finishing.\n${EXCEPTIONS_ARE_APPROVED}`;
 
 /** Notes from the slow engines are shown here, since the per-edit hook skips them. */
 const NOTE_LIMIT = 15;
@@ -85,7 +82,9 @@ export async function runStop(cwd: string, options: StopOptions): Promise<number
     if (!files.length) return 0;
 
     const adapters = options.adapters ?? defaultAdapters();
-    const result = await runMechanical(cwd, files, rules, { adapters });
+    // One gate for both tiers, so an exception refused by either is listed once.
+    const gate = new ExceptionGate(committedOnly(cwd));
+    const result = await runMechanical(cwd, files, rules, { adapters, exceptions: gate });
 
     const findings: string[] = [];
     const mechanical = result.findings.filter((f) => f.origin === "corpus");
@@ -105,7 +104,7 @@ export async function runStop(cwd: string, options: StopOptions): Promise<number
     // fails a pattern, and the pattern findings are the ones worth fixing first.
     const blocked = mechanical.some((f) => f.severity === "error");
     if (!blocked && options.judgment && scope) {
-      const llm = await runLlmRules(cwd, files, rules, config, false, true);
+      const llm = await runLlmRules(cwd, files, rules, config, false, true, gate);
       for (const f of llm.findings) {
         findings.push(`- ${f.file}:${f.line} ${f.statement} [${f.ruleId}]`);
       }
@@ -125,6 +124,17 @@ export async function runStop(cwd: string, options: StopOptions): Promise<number
       (u) => `${u.tool} did not run (${u.reason})${u.rules.length ? `; unchecked: ${u.rules.join(", ")}` : ""}`,
     );
 
+    // Shown to the person on every pass, blocked or not: an attempted exception
+    // is exactly the thing they need to see rather than find later in a diff.
+    const refused = gate.refused();
+    const refusedSection = refused.length
+      ? [
+          `agentic-qa: ${refused.length} qa-ignore comment(s) are not committed, so they were not honoured:`,
+          ...refusedLines(refused),
+          "An exception takes effect once you commit it.",
+        ]
+      : [];
+
     const noteSection = notes.length
       ? [`Scanners also noted ${notes.length} thing(s). These never block:`, ...noteLines(notes)]
       : [];
@@ -135,8 +145,12 @@ export async function runStop(cwd: string, options: StopOptions): Promise<number
         decision: "block",
         reason: [
           summary, "", ...findings, "", FIX_OR_EXCUSE,
+          ...(refused.length
+            ? ["", "These qa-ignore comments are not committed, so they do not count:", ...refusedLines(refused)]
+            : []),
           ...(noteSection.length ? ["", ...noteSection] : []),
         ].join("\n"),
+        ...(refusedSection.length ? { systemMessage: refusedSection.join("\n") } : {}),
       });
       return 0;
     }
@@ -151,6 +165,7 @@ export async function runStop(cwd: string, options: StopOptions): Promise<number
             ...findings,
           ]
         : []),
+      ...refusedSection,
       ...(noteSection.length ? [`agentic-qa: ${noteSection[0]}`, ...noteSection.slice(1)] : []),
       ...unenforced.map((u) => `agentic-qa: ${u}`),
     ];

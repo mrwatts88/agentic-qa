@@ -4,7 +4,7 @@ import type { Finding, PatternEnforcement, Rule } from "./types.js";
 import type { Adapter } from "./adapters/types.js";
 import { defaultAdapters } from "./adapters/index.js";
 import { ruleAppliesTo, rulesForFile } from "./route.js";
-import { isIgnoredAtLine } from "./ignore.js";
+import { ExceptionGate, type RefusedException } from "./exceptions.js";
 
 /**
  * The free tier. Cost nothing and exactly repeatable. Most of a rules corpus
@@ -40,6 +40,7 @@ function patternFindings(
   file: string,
   text: string,
   lines: string[],
+  gate: ExceptionGate,
 ): Finding[] {
   // Companion patterns get the rule's own flags, so `flags: i` applies to them
   // too. `g` is stripped because a global regex makes `.test` stateful through
@@ -65,7 +66,7 @@ function patternFindings(
   const findings: Finding[] = [];
   for (const match of text.matchAll(regex)) {
     const line = lineOf(text, match.index ?? 0);
-    if (isIgnoredAtLine(lines, line - 1, rule.id)) continue;
+    if (gate.excusesAt(file, lines, line - 1, rule.id)) continue;
 
     findings.push({
       ruleId: rule.id,
@@ -103,6 +104,8 @@ export interface Unenforced {
 export interface MechanicalResult {
   findings: Finding[];
   unenforced: Unenforced[];
+  /** qa-ignore comments that matched a finding but did not count. */
+  refused: RefusedException[];
 }
 
 export interface MechanicalOptions {
@@ -113,6 +116,11 @@ export interface MechanicalOptions {
    * because there a missing scanner is a problem with the repo.
    */
   ci?: boolean;
+  /**
+   * Which exceptions count. Every one by default, as at commit and in CI; the
+   * automatic call sites pass a gate that honours only committed ones.
+   */
+  exceptions?: ExceptionGate;
 }
 
 function readLines(cwd: string, file: string, cache: Map<string, string[]>): string[] {
@@ -135,6 +143,7 @@ async function runAdapter(
   rules: Rule[],
   ci: boolean,
   lineCache: Map<string, string[]>,
+  gate: ExceptionGate,
 ): Promise<{ findings: Finding[]; unenforced?: Unenforced }> {
   const handled = files.filter((file) => adapter.handles(file));
   if (!handled.length) return { findings: [] };
@@ -194,7 +203,7 @@ async function runAdapter(
     const lines = readLines(cwd, hit.file, lineCache);
 
     const ruleId = promised ? rule.id : `${adapter.tool}:${hit.rule}`;
-    if (isIgnoredAtLine(lines, hit.line - 1, ruleId)) continue;
+    if (gate.excusesAt(hit.file, lines, hit.line - 1, ruleId)) continue;
 
     const excerpt = hit.redact
       ? WITHHELD
@@ -235,6 +244,7 @@ export async function runMechanical(
 ): Promise<MechanicalResult> {
   const findings: Finding[] = [];
   const unenforced: Unenforced[] = [];
+  const gate = options.exceptions ?? new ExceptionGate();
 
   for (const file of files) {
     const applicable = rulesForFile(file, rules).filter(
@@ -258,6 +268,7 @@ export async function runMechanical(
           file,
           text,
           lines,
+          gate,
         ),
       );
     }
@@ -266,10 +277,10 @@ export async function runMechanical(
   const ci = options.ci ?? Boolean(process.env.CI);
   const lineCache = new Map<string, string[]>();
   for (const adapter of options.adapters ?? defaultAdapters()) {
-    const result = await runAdapter(cwd, adapter, files, rules, ci, lineCache);
+    const result = await runAdapter(cwd, adapter, files, rules, ci, lineCache, gate);
     findings.push(...result.findings);
     if (result.unenforced) unenforced.push(result.unenforced);
   }
 
-  return { findings: dedupe(findings), unenforced };
+  return { findings: dedupe(findings), unenforced, refused: gate.refused() };
 }

@@ -69,15 +69,29 @@ describe("the PostToolUse hook", () => {
     expect(payload.hookSpecificOutput.additionalContext).toContain("session.ts");
   });
 
-  it("tells the model how to record a deliberate exception", async () => {
+  it("tells the model an exception is the person's to approve", async () => {
     git("init");
     write("session.ts", 'localStorage.setItem("authToken", token);\n');
 
     await runHook(dir);
+    const context = JSON.parse(output).hookSpecificOutput.additionalContext;
 
-    expect(JSON.parse(output).hookSpecificOutput.additionalContext).toContain(
-      "qa-ignore",
+    expect(context).toContain("qa-ignore");
+    expect(context).toContain("committed");
+  });
+
+  it("does not honour an exception the working tree added", async () => {
+    git("init");
+    write(
+      "session.ts",
+      '// qa-ignore: fe.storage.no-token-in-local-storage - fine\nlocalStorage.setItem("authToken", token);\n',
     );
+
+    await runHook(dir);
+    const context = JSON.parse(output).hookSpecificOutput.additionalContext;
+
+    expect(context).toContain("rule violation(s)");
+    expect(context).toContain("session.ts:1 qa-ignore for fe.storage.no-token-in-local-storage");
   });
 
   /**
