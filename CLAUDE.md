@@ -57,7 +57,8 @@ grounding needs.
 - `src/rules/adapters/*.ts` — one per engine. Runs the tool and returns what it
   said in the tool's own rule ids; knows nothing about the corpus.
 - `config/` — the engine configs the tool ships and runs with (eslint,
-  dependency-cruiser). Trimming a preset or narrowing a scope here can break a
+  dependency-cruiser, and gitleaks' upstream ruleset vendored at a pinned
+  version: re-vendor it, never hand-edit it). Trimming a preset or narrowing a scope here can break a
   corpus claim; the coverage test says which.
 - `src/rules/llm.ts` — runs the judgment tier, with its own cached ledger.
 - `src/rules/ignore.ts` — the qa-ignore escape hatch, shared by both tiers.
@@ -169,6 +170,10 @@ grounding needs.
   `cd`s. This repo's own Stop hook once failed with "cannot find module
   fixtures/rules/dist/cli.js" because a shell was left in a fixture directory.
   Config, globs and git's root-relative paths all assume the repo root.
+- **A finding never quotes a secret.** Every call site prints the excerpt — a
+  terminal, a CI log, the agent's context — so an adapter marks secret findings
+  `redact`, a pattern rule declares `redact: true`, and the conductor withholds
+  the line.
 - **An engine rule with the right name is not the same coverage.** Before
   delegating a pattern, read what the engine rule matches. The vitest rule named
   "no conditional in test" sees only a top-level `if`, and Sonar's cookie and

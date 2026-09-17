@@ -13,6 +13,7 @@
     { "rule": "test.no-conditional-logic", "file": "tests/table.test.ts" },
     { "rule": "test.no-assertion-in-loop", "file": "tests/table.test.ts" },
     { "rule": "sec.no-world-open-security-group", "file": "infra/main.tf" },
+    { "rule": "sec.no-aws-access-key-id", "file": "infra/.env.deploy" },
     { "rule": "data.sql.no-concatenated-query", "file": "data/queries.ts" },
     { "rule": "data.privacy.no-personal-data-in-logs", "file": "data/queries.ts" },
     { "rule": "sec.jwt.no-none-algorithm", "file": "security/auth.ts" },
@@ -27,6 +28,7 @@
     "web/session.test.ts",
     "data/repositories/queries-safe.ts",
     "security/auth-safe.ts",
-    "api/db/client.ts"
+    "api/db/client.ts",
+    "infra/README.md"
   ]
 }

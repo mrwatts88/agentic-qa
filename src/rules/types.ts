@@ -80,6 +80,11 @@ export interface Rule {
   rationale: string;
   triggers: RuleTrigger;
   enforcement: Enforcement;
+  /**
+   * The matched line holds a secret, so findings must not quote it. Every call
+   * site prints the excerpt: a terminal, a CI log, the agent's context.
+   */
+  redact?: boolean;
   /** Where in the prose corpus this came from, for tracing it back. */
   source?: string;
 }

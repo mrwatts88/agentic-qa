@@ -512,11 +512,11 @@ machine end to end before enumerating anything.
 **Read this first if you are new here.** The decisions above record what has been
 *settled*, which is not the same as what has been *built*. The delegation turn is
 partly implemented: the adapter seam, the corpus/gauntlet split and the coverage
-check exist, with two adapters: **eslint** (`sec.jwt.no-none-algorithm`,
-`test.no-conditional-assertion`) and **dependency-cruiser**
-(`be.layer.no-db-client-outside-repository`). Every other mechanical rule is still
-a regex, some of them on purpose (see Phase 2). gitleaks and semgrep are not
-wired in, and `mutate` is still
+check exist, with three adapters: **eslint** (`sec.jwt.no-none-algorithm`,
+`test.no-conditional-assertion`), **dependency-cruiser**
+(`be.layer.no-db-client-outside-repository`) and **gitleaks**
+(`sec.no-aws-access-key-id`). Every other mechanical rule is still a regex, some
+of them on purpose (see Phase 2). semgrep is not wired in, and `mutate` is still
 the hand-rolled version rather than Stryker. Everything in this section runs.
 
 **Done and verified.**
@@ -585,6 +585,25 @@ the hand-rolled version rather than Stryker. Everything in this section runs.
   the coverage check rather than silently unenforcing. Shipped with a
   `no-circular` gauntlet rule. A one-file PostToolUse run with both engines
   takes about 0.7s. Path aliases from a tsconfig are not resolved yet.
+- The gitleaks adapter, completing Phase 0. `sec.no-aws-access-key-id` moved to
+  `aws-access-token`, which catches `ASIA` temporary credentials the AKIA-only
+  pattern missed and, through entropy and an allowlist, stays quiet on AWS's
+  documentation example key, which the pattern flagged; `fixtures/rules` gained
+  both cases and scores 19/19. The ruleset is vendored at v8.30.1 in
+  `config/gitleaks.toml` and CI installs that binary version. It is the first
+  adapter that can genuinely be missing: locally that is a warning naming the
+  rules left unchecked, and in CI a failure, and a test runs the adapter
+  against a binary that does not exist. Secret findings are redacted at the
+  source (`--redact`) and never quote the line, because every call site prints
+  the excerpt into a terminal, a CI log or the agent's context.
+  Building it found two older gaps. **File selection skipped dotfiles**, so a
+  `**/*` trigger never saw `.env`, `.npmrc` or `.github/` — the likeliest places
+  for a committed secret — while routing matched them; `selectFiles` now globs
+  with `dot: true` and always excludes `.git/`. And **the coverage check caught
+  the corpus over-promising**: the rule triggered on `**/*`, but gitleaks never
+  scans lockfiles, images or its own config, so the rule's `excludePaths` now
+  state that. Test files are exempt too, per "A rule that matches dangerous
+  strings must exempt test files", which the old pattern had never followed.
 - The turn-boundary call site (`agentic-qa stop`): a `Stop` hook that checks
   everything the turn changed, blocks the agent from finishing while findings
   stand, and blocks at most once per turn. Mechanical first, with the judgment
@@ -597,15 +616,12 @@ the hand-rolled version rather than Stryker. Everything in this section runs.
 
 ## Next
 
-### 1. Phase 0: gitleaks
+### 1. Phase 0 is done; measure the per-edit cost before Phase 1
 
-The seam, the coverage check, the qa-ignore decision and the fail-open/closed
-split are built, with eslint and dependency-cruiser (see Status). What is left is
-**gitleaks**, which takes over `sec.no-aws-access-key-id`. It is a Go binary
-rather than an npm package, so it is the first adapter that can genuinely be
-missing, and the first real exercise of failing open locally and closed in CI —
-which means the CI workflow has to install it. Its `isLive` has no config to read
-unless we vendor a pinned `gitleaks.toml`; decide that before claiming a rule.
+All three Phase 0 adapters are built (see Status). Before semgrep adds a fourth
+engine to every PostToolUse call, time the hook on a realistic edit in
+`orders-admin` and decide whether some engines belong only at Stop, commit and
+CI. semgrep in particular starts slowly.
 
 Decided while building the eslint half, and worth not relitigating:
 

@@ -21,8 +21,14 @@ export async function selectFiles(
 ): Promise<string[]> {
   const globbed = await glob(triggerGlobs(rules), {
     cwd,
-    ignore: config.ignore,
+    // .git is never source, and is excluded here rather than in the default
+    // ignore list because a repo's own list replaces the defaults.
+    ignore: [...config.ignore, "**/.git/**"],
     absolute: false,
+    // Routing matches dotfiles, so globbing must find them. Without this a
+    // `**/*` trigger never saw .env, .npmrc or .github/, which is where a
+    // committed secret is most likely to be.
+    dot: true,
   });
 
   if (!only) return globbed;

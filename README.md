@@ -61,7 +61,7 @@ Every rule must say how it is enforced:
 
 | tier | enforced by | cost |
 | --- | --- | --- |
-| `mechanical` | a real engine (eslint, dependency-cruiser), or a pattern where none covers it | free, every line, always |
+| `mechanical` | a real engine (eslint, dependency-cruiser, gitleaks), or a pattern where none covers it | free, every line, always |
 | `llm` | a model reads the file and judges | about a cent, opt-in |
 | `human` | should this exist at all | no tool answers this |
 
@@ -70,8 +70,9 @@ cannot express: does this handler check the caller *owns* the record, does this
 catch block hide a failure.
 
 The mechanical tier runs eslint broadly — typescript-eslint, eslint-plugin-sonarjs
-and the vitest plugin, on recommended presets — and dependency-cruiser for import
-layering, both from configs that ship with the package. It reports two kinds of
+and the vitest plugin, on recommended presets — dependency-cruiser for import
+layering, and gitleaks for secrets, all from configs that ship with the package.
+Secret findings never quote the source line. It reports two kinds of
 finding:
 
 - **Corpus findings.** A rule with `enforcement: { kind: external, tool: <tool>,
@@ -85,9 +86,9 @@ finding:
 `qa-ignore` silences either, by the id shown in brackets. A tool that cannot run
 is reported with the rules it left unenforced, and fails the run under `CI`.
 
-> **Where this is heading.** Three corpus rules are delegated so far. The rest are
-> hand-written patterns: some are being replaced by semgrep OSS and gitleaks on
-> the same seam, and some stay because they
+> **Where this is heading.** Four corpus rules are delegated so far. The rest are
+> hand-written patterns: some are being replaced by semgrep OSS on the same
+> seam, and some stay because they
 > cover the target stack better than the engine rule does. The judgment tier is unaffected; it is the part
 > no free tool covers. See [ROADMAP.md](ROADMAP.md) — "Reversed: the mechanical
 > tier delegates to existing scanners".
@@ -185,8 +186,13 @@ drift from what the gate enforces.
 for every provider, and costs money on every push. Add these steps to whatever
 you already use:
 
+The mechanical tier needs **gitleaks** on the path, because it is a binary and
+npm cannot install it. Locally a missing gitleaks is a warning naming the rules it
+leaves unchecked; under `CI` it fails the run. Install the version the vendored
+ruleset came from (see `GITLEAKS_CONFIG_VERSION`), as `qa.yml` does.
+
 ```yaml
-- run: npx agentic-qa rules         # free, no key needed
+- run: npx agentic-qa rules         # free, no key needed; needs gitleaks installed
 - run: npx agentic-qa rules --llm   # needs ANTHROPIC_API_KEY
 - run: npx agentic-qa contracts     # needs ANTHROPIC_API_KEY
 ```

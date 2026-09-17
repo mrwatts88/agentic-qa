@@ -258,6 +258,17 @@ describe("the mechanical runner", () => {
   });
 });
 
+describe("redaction", () => {
+  it("withholds the source line of a pattern finding on a rule marked redact", async () => {
+    write("a.ts", 'const password = "forbidden-hunter2";\n');
+
+    const [finding] = await patterns(dir, ["a.ts"], [rule({ redact: true })]);
+
+    expect(finding.line).toBe(1);
+    expect(JSON.stringify(finding)).not.toContain("hunter2");
+  });
+});
+
 /**
  * Without a sanctioned way to opt out of one rule, the first false positive
  * gets the entire check disabled instead.

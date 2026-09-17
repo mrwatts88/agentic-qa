@@ -12,15 +12,35 @@ rules:
     triggers:
       paths:
         - "**/*"
+      # Mirrors the parts of gitleaks' own path allowlist a TypeScript and
+      # Terraform repo actually contains. The corpus must not promise coverage
+      # on files the tool deliberately never scans: the coverage check refuses
+      # to run when it does, and was right to.
+      excludePaths:
+        - "**/{package-lock.json,npm-shrinkwrap.json,pnpm-lock.yaml,yarn.lock,deno.lock}"
+        - "**/*.{bmp,gif,jpg,jpeg,png,svg,tif,tiff,eot,otf,ttf,woff,woff2,pdf,doc,docx,xls,xlsx}"
+        - "**/*.{BMP,GIF,JPG,JPEG,PNG,SVG,PDF}"
+        - "**/gitleaks.toml"
+        - "**/node_modules/**"
+        # A test has to write the shape of a key to prove it is caught. A hit
+        # here is demoted to a note, not dropped, so a real key pasted into a
+        # test is still visible.
+        - "**/*.{test,spec}.{ts,tsx,js,jsx}"
+    # Delegated: gitleaks' rule also catches ASIA temporary credentials, which
+    # the AKIA-only pattern missed, and applies an entropy threshold and an
+    # allowlist, so AWS's documentation example key and a flat placeholder no
+    # longer fire. gitleaks is a binary, not a package: without it this rule
+    # fails open locally and closed in CI.
     enforcement:
-      kind: pattern
-      pattern: |-
-        AKIA[0-9A-Z]{16}
+      kind: external
+      tool: gitleaks
+      rule: aws-access-token
 
   - id: sec.no-hardcoded-credential
     statement: Do not hardcode a credential in source.
     tier: mechanical
     severity: error
+    redact: true
     rationale: >
       Secrets belong in the environment or a secrets manager, not in a literal
       a reader can copy. A hardcoded credential also tends to be the one nobody

@@ -9,6 +9,8 @@ import { runMechanical } from "../src/rules/mechanical";
 import { ruleAppliesTo } from "../src/rules/route";
 import { defaultAdapters } from "../src/rules/adapters/index";
 import { dependencyCruiser } from "../src/rules/adapters/dependency-cruiser";
+import { gitleaks } from "../src/rules/adapters/gitleaks";
+import { execFileSync } from "node:child_process";
 
 let dir: string;
 
@@ -315,5 +317,64 @@ describe("the dependency-cruiser adapter", () => {
     await expect(adapter.isLive(dir, RULE, "src/handlers/pkg.ts")).resolves.toBe(true);
     await expect(adapter.isLive(dir, RULE, "src/repositories/customerRepo.ts")).resolves.toBe(false);
     await expect(adapter.isLive(dir, "no-such-rule", "src/handlers/pkg.ts")).resolves.toBe(false);
+  });
+});
+
+function installed(binary: string): boolean {
+  try {
+    execFileSync(binary, ["version"], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Needs the real binary. Skipped on a machine without it, never in CI: CI is
+ * where a missing scanner is a repo problem, so there these must run.
+ */
+describe.skipIf(!installed("gitleaks") && !process.env.CI)("the gitleaks adapter", () => {
+  beforeEach(() => {
+    write("deploy.env", "AWS_ACCESS_KEY_ID=ASIAZ7QK3MXN4TPW2RVB\n");
+    write("README.md", "aws_access_key_id = AKIAIOSFODNN7EXAMPLE\n");
+  });
+
+  it("finds a temporary credential the AKIA-only pattern missed", async () => {
+    const run = await gitleaks().run(dir, ["deploy.env"]);
+
+    expect(run).toEqual({
+      status: "ran",
+      findings: [expect.objectContaining({ rule: "aws-access-token", file: "deploy.env", line: 1, redact: true })],
+    });
+  });
+
+  it("leaves AWS's documentation example key alone", async () => {
+    await expect(gitleaks().run(dir, ["README.md"])).resolves.toEqual({ status: "ran", findings: [] });
+  });
+
+  /** Every call site prints the excerpt: the terminal, CI logs, the agent. */
+  it("never repeats the secret in what it reports", async () => {
+    const { findings } = await runMechanical(dir, ["deploy.env"], [], {
+      adapters: [gitleaks()],
+      ci: false,
+    });
+
+    expect(findings).toHaveLength(1);
+    expect(JSON.stringify(findings)).not.toContain("ASIAZ7QK3MXN4TPW2RVB");
+  });
+
+  it("counts the rule as not live on a file its own allowlist skips", async () => {
+    await expect(gitleaks().isLive(dir, "aws-access-token", "deploy.env")).resolves.toBe(true);
+    await expect(gitleaks().isLive(dir, "aws-access-token", "package-lock.json")).resolves.toBe(false);
+    await expect(gitleaks().isLive(dir, "aws-access-token", "logo.PNG")).resolves.toBe(false);
+    await expect(gitleaks().isLive(dir, "no-such-rule", "deploy.env")).resolves.toBe(false);
+  });
+});
+
+describe("a scanner that is not installed", () => {
+  it("is reported as unavailable, never as a clean run", async () => {
+    const run = await gitleaks(undefined, "gitleaks-that-does-not-exist").run(dir, ["a.ts"]);
+
+    expect(run).toEqual({ status: "unavailable", reason: "gitleaks is not installed" });
   });
 });

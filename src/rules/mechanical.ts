@@ -18,6 +18,8 @@ import { isIgnoredAtLine } from "./ignore.js";
  * report a clean run for a tool that never ran.
  */
 
+const WITHHELD = "(source line withheld: it contains a secret)";
+
 /**
  * Patterns are matched against the whole file rather than line by line,
  * because some of them legitimately span a line break (an assertion followed
@@ -72,7 +74,7 @@ function patternFindings(
       severity: rule.severity,
       file,
       line,
-      excerpt: (lines[line - 1] ?? "").trim().slice(0, 160),
+      excerpt: rule.redact ? WITHHELD : (lines[line - 1] ?? "").trim().slice(0, 160),
       rationale: rule.rationale,
     });
   }
@@ -194,6 +196,10 @@ async function runAdapter(
     const ruleId = promised ? rule.id : `${adapter.tool}:${hit.rule}`;
     if (isIgnoredAtLine(lines, hit.line - 1, ruleId)) continue;
 
+    const excerpt = hit.redact
+      ? WITHHELD
+      : (lines[hit.line - 1] ?? "").trim().slice(0, 160);
+
     findings.push(
       promised
         ? {
@@ -203,7 +209,7 @@ async function runAdapter(
             severity: rule.severity,
             file: hit.file,
             line: hit.line,
-            excerpt: (lines[hit.line - 1] ?? "").trim().slice(0, 160),
+            excerpt,
             rationale: rule.rationale,
           }
         : {
@@ -213,7 +219,7 @@ async function runAdapter(
             severity: "warn",
             file: hit.file,
             line: hit.line,
-            excerpt: (lines[hit.line - 1] ?? "").trim().slice(0, 160),
+            excerpt,
             rationale: "",
           },
     );

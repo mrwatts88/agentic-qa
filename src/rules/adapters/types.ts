@@ -11,6 +11,12 @@ export interface ToolFinding {
   file: string;
   line: number;
   message: string;
+  /**
+   * The line holds something that must not be echoed, such as a secret. The
+   * conductor then reports without quoting the source, because every call
+   * site prints the excerpt: the terminal, CI logs and the agent's context.
+   */
+  redact?: boolean;
 }
 
 export type ToolRun =
