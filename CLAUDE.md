@@ -297,6 +297,13 @@ grounding needs.
 
 ## Working on this repo itself
 
+- **Never add a `qa-ignore` to get past a finding.** Not to release a Stop
+  block, not to quiet the per-edit hook, and not with a reason that sounds
+  right. If a finding looks wrong, say so to the person and let them decide; an
+  exception is theirs to make, and it counts once they commit it. The same goes
+  for `--no-verify`, loosening a rule, or narrowing a scope to make a finding go
+  away.
+
 - **Evaluate before building.** Before a large piece of work, lay out the
   options, update ROADMAP in priority order, and agree the next step. The
   system has to be trustworthy and usable before the rules corpus grows, so
