@@ -5,7 +5,7 @@ import { selectFiles } from "./rules/select.js";
 import { runMechanical } from "./rules/mechanical.js";
 import type { Adapter } from "./rules/adapters/types.js";
 import type { Finding } from "./rules/types.js";
-import { defaultAdapters } from "./rules/adapters/index.js";
+import { adaptersFor, policyFor } from "./sites.js";
 import { runLlmRules } from "./rules/llm.js";
 import { checkContracts } from "./contracts/check.js";
 import { changedFiles, EXCEPTIONS_ARE_APPROVED, refusedLines } from "./hook.js";
@@ -32,9 +32,12 @@ import { committedOnly, ExceptionGate } from "./rules/exceptions.js";
 export interface StopOptions {
   /** True when a Stop hook has already blocked the agent this turn. */
   stopHookActive: boolean;
-  /** Whether to run the tiers that cost money and need the network. */
-  judgment: boolean;
-  /** The engines to run; every one by default. Tests pass the fast ones. */
+  /**
+   * False switches off the judgment rules and test contracts whatever the
+   * call-site policy says: `--mechanical`, an override of the same table.
+   */
+  judgment?: boolean;
+  /** The engines to run; the policy's by default. Tests pass the fast ones. */
   adapters?: Adapter[];
 }
 
@@ -81,7 +84,8 @@ export async function runStop(cwd: string, options: StopOptions): Promise<number
     const files = await selectFiles(cwd, config, rules, scope);
     if (!files.length) return 0;
 
-    const adapters = options.adapters ?? defaultAdapters();
+    const policy = policyFor("stop", config.callSites);
+    const adapters = options.adapters ?? adaptersFor(policy);
     // One gate for both tiers, so an exception refused by either is listed once.
     const gate = new ExceptionGate(committedOnly(cwd));
     const result = await runMechanical(cwd, files, rules, { adapters, exceptions: gate });
@@ -103,20 +107,25 @@ export async function runStop(cwd: string, options: StopOptions): Promise<number
     // is written: there is no point paying a model to judge code that already
     // fails a pattern, and the pattern findings are the ones worth fixing first.
     const blocked = mechanical.some((f) => f.severity === "error");
-    if (!blocked && options.judgment && scope) {
-      const llm = await runLlmRules(cwd, files, rules, config, false, true, gate);
-      for (const f of llm.findings) {
-        findings.push(`- ${f.file}:${f.line} ${f.statement} [${f.ruleId}]`);
+    const judgment = options.judgment !== false;
+    if (!blocked && judgment && scope) {
+      if (policy.llm) {
+        const llm = await runLlmRules(cwd, files, rules, config, false, true, gate);
+        for (const f of llm.findings) {
+          findings.push(`- ${f.file}:${f.line} ${f.statement} [${f.ruleId}]`);
+        }
       }
 
-      const contracts = await checkContracts(config, {
-        cwd,
-        all: false,
-        only: scope,
-        json: true,
-      });
-      for (const r of contracts.violated) {
-        findings.push(`- ${r.file} claims "${r.description}" — ${r.reason}`);
+      if (policy.contracts) {
+        const contracts = await checkContracts(config, {
+          cwd,
+          all: false,
+          only: scope,
+          json: true,
+        });
+        for (const r of contracts.violated) {
+          findings.push(`- ${r.file} claims "${r.description}" — ${r.reason}`);
+        }
       }
     }
 

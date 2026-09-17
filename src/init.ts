@@ -52,10 +52,10 @@ function preCommit(runner: string): string {
   return `#!/bin/sh
 # Installed by agentic-qa.
 #
-# Mechanical tier only. No model calls here: a commit has to be fast, free and
-# work with no network. The judgment rules run in CI, where nobody can skip
-# them with --no-verify.
-exec ${runner} rules --staged
+# Checks staged files. What runs is the commit row of agentic-qa's call-site
+# table, adjusted under callSites in qa.config.yaml; never a model call. The
+# judgment rules run in CI, where nobody can skip them with --no-verify.
+exec ${runner} commit
 `;
 }
 

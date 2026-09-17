@@ -202,49 +202,75 @@ instead.
 
 ## Where it runs
 
-Four places, all calling the same binary, so what the agent is told cannot drift
-from what the gate enforces.
+Four call sites, each its own command, all in the same binary, so what the agent
+is told cannot drift from what the gate enforces. What each one runs by default:
 
-| where | what runs | blocks? | time |
-| --- | --- | --- | --- |
-| after each edit (`PostToolUse`) | the file just edited; eslint, dependency-cruiser, gitleaks | never; reports to Claude | under a second |
-| end of each turn (`Stop`) | everything the turn changed; every scanner, then the judgment tiers | yes, once per turn | about 5s, plus any judging |
-| on commit (git hook) | staged files; every scanner, no model calls | yes | about 5s |
-| CI | everything, including the judgment tiers | yes | minutes |
+| call site | command | scanners | judgment rules | test contracts |
+| --- | --- | --- | --- | --- |
+| after each edit | `agentic-qa hook` | eslint, dependency-cruiser, gitleaks | no | no |
+| end of each turn | `agentic-qa stop` | eslint, dependency-cruiser, gitleaks, opengrep | yes | yes |
+| on commit | `agentic-qa commit` | eslint, dependency-cruiser, gitleaks | no | no |
+| CI | `agentic-qa ci` | eslint, dependency-cruiser, gitleaks, opengrep | yes | yes |
 
-- **After each edit** is quick feedback. opengrep is left out because it takes
-  seconds, and this fires on every edit.
-- **End of each turn** is the one that steers. If a rule is broken, the agent is
-  not allowed to finish and is told why while it still has the context that
-  produced the code. It blocks once, then tells you and lets the turn end, so it
-  can never trap a session. opengrep's notes are shown to you here, without
-  holding the turn.
-- **On commit** lives in a committed `hooks/` directory, and the `prepare` script
-  points git at it on every `npm install`, so a fresh clone is gated without
-  anyone typing a git command.
-- **CI** is the layer nobody can skip with `--no-verify`.
+- **After each edit** checks the file just edited and reports to Claude. It never
+  blocks and takes under a second. opengrep takes seconds, so it is left out.
+- **End of each turn** checks everything the turn changed, and is the one that
+  steers. If a rule is broken, the agent is not allowed to finish and is told
+  why while it still has the context that produced the code. It blocks once,
+  then tells you and lets the turn end, so it can never trap a session.
+  opengrep's notes are shown to you here, without holding the turn. About 5s,
+  plus any judging.
+- **On commit** checks staged files and refuses the commit on an error. It
+  lives in a committed `hooks/` directory, and the `prepare` script points git
+  at it on every `npm install`, so a fresh clone is gated without anyone typing
+  a git command. It skips opengrep so every commit stays quick; opengrep's rules
+  still block at the end of a turn and in CI.
+- **CI** checks the whole repo and is the layer nobody can skip with
+  `--no-verify`.
+
+### Changing what runs
+
+Override any cell under `callSites` in `qa.config.yaml`:
+
+```yaml
+callSites:
+  commit:
+    scanners: all          # fast (the default here) or all
+  stop:
+    skip: [opengrep]       # leave a scanner out by name
+    contracts: false       # judgment rules and test contracts switch separately
+```
+
+`scanners: fast` means every scanner not marked slow, so a slow scanner added in
+a later version stays out of the quick call sites without any config change.
+Skipping a scanner leaves the rules it enforces to the other call sites.
+
+Two cells cannot be changed: the per-edit hook and the commit hook never run the
+judgment rules or test contracts. The first can run several copies at once, and
+those tiers write committed files; the second must never cost money or wait on a
+model. A misspelled call site, setting or scanner name is an error, not ignored.
+
+### CI
 
 `init` does not write a CI config, because that file is committed, is different
 for every provider, and costs money on every push. Add these steps to whatever
 you already use:
 
 ```yaml
-- run: npx agentic-qa setup          # download the pinned scanners and rules
-- run: npx agentic-qa rules          # free, no key needed
-- run: npx agentic-qa rules --llm    # needs ANTHROPIC_API_KEY
-- run: npx agentic-qa contracts      # needs ANTHROPIC_API_KEY
+- run: npx agentic-qa setup    # download the pinned scanners and rules
+- run: npx agentic-qa ci       # everything; exits non-zero on a problem
 ```
 
 Cache `~/.cache/agentic-qa` between runs so the download happens once. The
-judgment steps need `ANTHROPIC_API_KEY` as a secret, because `claude -p` rides on
-your local Claude Code login and CI has none; skip them when the secret is
-absent, so a fork's pull request still gets the free tier.
+judgment rules and test contracts need `ANTHROPIC_API_KEY` as a secret, because
+`claude -p` rides on your local Claude Code login and CI has none. Without the
+key, `ci` skips them with a warning and still runs the scanners, so a fork's pull
+request gets the free tier.
 
-This repository's own `.github/workflows/qa.yml` shows the caching and the
-key-gated steps, but it is not a template for yours: it builds agentic-qa from
-source and runs `node dist/cli.js`, where your repo runs `npx agentic-qa`. A
-tested GitHub Actions example for a consuming repo is on the
-[roadmap](ROADMAP.md).
+This repository's own `.github/workflows/qa.yml` shows the caching, but it is not
+a template for yours: it builds agentic-qa from source and runs `node
+dist/cli.js`, where your repo runs `npx agentic-qa`. A tested GitHub Actions
+example for a consuming repo is on the [roadmap](ROADMAP.md).
 
 ## Checking the checker
 

@@ -1,6 +1,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
+import { parseSiteOverrides, type SiteOverrides } from "./sites.js";
 
 export interface QaConfig {
   /** Globs for test files whose contracts are verified. */
@@ -20,6 +21,11 @@ export interface QaConfig {
     /** Abort a single judgment that hangs. */
     timeoutMs: number;
   };
+  /**
+   * This repo's changes to what runs at each call site. The defaults and the
+   * reasoning behind them are in `src/sites.ts`.
+   */
+  callSites: SiteOverrides;
   /** Treat `unverifiable` (description too vague to falsify) as a failure. */
   failOnUnverifiable: boolean;
   mutation: {
@@ -50,6 +56,7 @@ export const DEFAULT_CONFIG: QaConfig = {
     maxBudgetUsd: 0.5,
     timeoutMs: 120_000,
   },
+  callSites: {},
   failOnUnverifiable: false,
   mutation: {
     root: ".",
@@ -73,6 +80,7 @@ export function loadConfig(cwd: string): QaConfig {
     return {
       ...DEFAULT_CONFIG,
       ...raw,
+      callSites: parseSiteOverrides(raw.callSites),
       judge: { ...DEFAULT_CONFIG.judge, ...(raw.judge ?? {}) },
       mutation: { ...DEFAULT_CONFIG.mutation, ...(raw.mutation ?? {}) },
       rules: {

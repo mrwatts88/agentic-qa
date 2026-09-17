@@ -4,7 +4,7 @@ import { loadConfig } from "./config.js";
 import { loadRules } from "./rules/load.js";
 import { selectFiles } from "./rules/select.js";
 import { runMechanical } from "./rules/mechanical.js";
-import { defaultAdapters } from "./rules/adapters/index.js";
+import { adaptersFor, policyFor } from "./sites.js";
 import { committedOnly, ExceptionGate, type RefusedException } from "./rules/exceptions.js";
 
 /**
@@ -145,10 +145,11 @@ export async function runHook(cwd: string, filePath?: string): Promise<number> {
 
     const files = await selectFiles(cwd, config, rules, scope);
 
-    // The fast engines only: this fires on every edit. The slow ones run at the
-    // turn boundary, which is where their corpus rules block anyway.
+    // The fast engines only by default, since this fires on every edit; see
+    // src/sites.ts. The slow ones run at the turn boundary, where their corpus
+    // rules block anyway.
     const { findings, unenforced, refused } = await runMechanical(cwd, files, rules, {
-      adapters: defaultAdapters({ fast: true }),
+      adapters: adaptersFor(policyFor("edit", config.callSites)),
       exceptions: new ExceptionGate(committedOnly(cwd)),
     });
     const corpus = findings.filter((f) => f.origin === "corpus");

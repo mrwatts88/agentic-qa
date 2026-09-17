@@ -45,6 +45,9 @@ grounding needs.
 ## Layers
 
 - `src/cli.ts` — argument parsing and exit codes. Exit 1 means a gate failed.
+- `src/sites.ts` — what runs where: the default policy per call site, a repo's
+  `callSites` overrides, and the README table rendered from them.
+- `src/gate.ts` — the `commit` and `ci` call sites, which gate by exit code.
 - `src/config.ts` — `qa.config.yaml` loading and defaults.
 - `src/judge.ts` — the only place that talks to a model.
 - `src/contracts/extract.ts` — TypeScript AST parsing of test files.
@@ -101,6 +104,12 @@ grounding needs.
 - **One CLI, four call sites.** The per-edit hook, the turn-boundary hook, git
   hooks, and CI all invoke this same binary. Never fork the logic per call site,
   or the rules the agent is told about drift from the rules the gate enforces.
+- **What a call site runs is its row in `src/sites.ts`, never code of its own.**
+  Defaults choose scanners by property (`slow`), never by name, so a slow engine
+  added later stays out of the quick call sites unasked. A generated file names
+  the call site (`agentic-qa commit`) rather than the checks, so a repo set up
+  long ago still gets today's policy. A test holds the README's table to the
+  defaults; change them together.
 - **No model calls in pre-commit.** Git hooks run the mechanical tier only: a
   commit must not cost money or wait on a model. Commits no longer have to work
   offline — a current ruleset is worth more than that — but a rule that needs the
@@ -321,12 +330,13 @@ grounding needs.
   read every time. Throwaway experiments that a roadmap item starts from go in
   `fixtures/probes/`, never only a session scratchpad.
 
-- **This repo's own `Stop` hook runs `--mechanical` on purpose.** `init` writes
-  `agentic-qa stop` with no flag, so other repos get the judgment tiers at the
-  turn boundary. Here it is restricted to the free tier because a model call on
-  every turn of every session in this repo is real money for no benefit while
-  working on the tool itself. The discrepancy between `.claude/settings.json` and
-  what `init` writes is deliberate; do not "fix" it.
+- **This repo's own `Stop` runs the free tier only, on purpose.** Consuming
+  repos get the judgment tiers at the turn boundary by default. Here they are
+  off because a model call on every turn of every session in this repo is real
+  money for no benefit while working on the tool itself. It is set under
+  `callSites.stop` in this repo's `qa.config.yaml`, not with a flag in
+  `.claude/settings.json`, which matches what `init` writes. Do not turn it on,
+  and do not change the default in `src/sites.ts` to match it.
 - **`orders-admin` installs this as a git dependency, so it lags.** A new CLI
   command does not exist there until this repo is pushed and the dependency is
   reinstalled. The order is: commit and push here, then

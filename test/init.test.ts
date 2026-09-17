@@ -114,12 +114,16 @@ describe("init", () => {
     expect(result.written).not.toContain(join(".git", "hooks", "pre-commit"));
   });
 
-  it("installs a commit hook that runs only the free mechanical tier", () => {
+  /**
+   * The hook names the call site and nothing else, so what a commit runs is
+   * decided by the call-site table rather than baked into a generated file
+   * that an older repo keeps forever.
+   */
+  it("installs a commit hook that defers to the commit call site", () => {
     runInit(dir, "npx agentic-qa", BOTH);
     const hook = readFileSync(join(dir, "hooks/pre-commit"), "utf8");
 
-    expect(hook).toContain("rules --staged");
-    // A commit must not wait on a model, cost money, or need the network.
+    expect(hook).toContain("exec npx agentic-qa commit\n");
     expect(hook).not.toContain("--llm");
   });
 
@@ -318,7 +322,7 @@ describe("init", () => {
       "node dist/cli.js hook",
     );
     expect(readFileSync(join(dir, "hooks/pre-commit"), "utf8")).toContain(
-      "node dist/cli.js rules --staged",
+      "node dist/cli.js commit",
     );
   });
 });

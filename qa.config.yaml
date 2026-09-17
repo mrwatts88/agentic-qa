@@ -26,6 +26,15 @@ judge:
 # the ratchet: once every description is falsifiable, it should stay that way.
 failOnUnverifiable: false
 
+# What runs at each call site; defaults and reasoning in src/sites.ts. Stop runs
+# the free tier only here: a model call on every turn of every session spent
+# working on the tool itself is real money for no benefit. Consuming repos keep
+# the default, judgment tiers at Stop included.
+callSites:
+  stop:
+    llm: false
+    contracts: false
+
 rules:
   llm:
     maxFileBytes: 60000

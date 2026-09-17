@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import { parseArgs } from "node:util";
-import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import pc from "picocolors";
 import { loadConfig } from "./config.js";
@@ -14,6 +13,7 @@ import { runStop } from "./stop.js";
 import { runInit, installHooks, prepareLine } from "./init.js";
 import { selectFiles } from "./rules/select.js";
 import { runMechanical } from "./rules/mechanical.js";
+import { printFindings, printUnenforced, runCi, runCommit, stagedFiles } from "./gate.js";
 import { evaluateRules, evaluateLlmRules } from "./rules/evaluate.js";
 import { runLlmRules } from "./rules/llm.js";
 import { ensureBinary, ensureSemgrepRules, GITLEAKS, OPENGREP, SEMGREP_RULES } from "./tools/provision.js";
@@ -26,6 +26,8 @@ Usage:
   agentic-qa setup                  download the pinned scanners and rules now
   agentic-qa hook                   PostToolUse hook: report on what just changed
   agentic-qa stop                   Stop hook: check the whole turn, block once on findings
+  agentic-qa commit                 pre-commit hook: check staged files; exits 1 on errors
+  agentic-qa ci                     CI: check the whole repo, judgment tiers included
   agentic-qa rules [options]        check changed code against the rules corpus
   agentic-qa rules --llm            also run the rules that need a model's judgment
   agentic-qa contracts [options]    verify tests assert what their descriptions claim
@@ -46,14 +48,6 @@ Options:
   --expected <path>   expectations file for eval (default: expected.json)
   -h, --help
 `;
-
-function stagedFiles(cwd: string): string[] {
-  const out = execFileSync("git", ["diff", "--cached", "--name-only"], {
-    cwd,
-    encoding: "utf8",
-  });
-  return out.split("\n").filter(Boolean);
-}
 
 async function main(): Promise<number> {
   const { values, positionals } = parseArgs({
@@ -106,9 +100,16 @@ async function main(): Promise<number> {
     const { stopHookActive } = await readHookPayload();
     return runStop(hookCwd, {
       stopHookActive: stopHookActive ?? false,
-      judgment: !values.mechanical,
+      // An override of the stop row, not separate logic: off here means off,
+      // and absent means whatever the call-site policy says.
+      ...(values.mechanical ? { judgment: false } : {}),
     });
   }
+
+  // The two call sites that gate by exit code. What each runs is its row of the
+  // table in src/sites.ts, plus this repo's overrides.
+  if (command === "commit") return runCommit(cwd);
+  if (command === "ci") return runCi(cwd);
 
   // Downloads the pinned scanners and rules now rather than on first use. Every
   // check provisions on demand anyway; this is for CI, and for a machine that
@@ -197,7 +198,7 @@ async function main(): Promise<number> {
     }
 
     process.stdout.write(
-      pc.dim("\nRun the judgment rules in CI with: agentic-qa rules --llm\n"),
+      pc.dim("\nIn CI, run: agentic-qa setup, then agentic-qa ci\n"),
     );
     return 0;
   }
@@ -226,18 +227,11 @@ async function main(): Promise<number> {
       values.staged ? stagedFiles(cwd) : undefined,
     );
 
+    // Every engine: a person running this by hand asked for a full check. The
+    // call sites choose their engines from the table instead.
     const mechanical = await runMechanical(cwd, files, rules);
     const findings = mechanical.findings;
-
-    // Failing open locally is only acceptable if it is loud.
-    for (const u of mechanical.unenforced) {
-      process.stderr.write(
-        pc.yellow(`${u.tool} did not run: ${u.reason}\n`) +
-          (u.rules.length
-            ? pc.yellow(`  left unenforced: ${u.rules.join(", ")}\n`)
-            : ""),
-      );
-    }
+    printUnenforced(mechanical.unenforced);
 
     // Opt-in: the llm tier costs money, so it never runs in a pre-commit hook.
     if (values.llm) {
@@ -258,7 +252,6 @@ async function main(): Promise<number> {
     }
 
     const corpus = findings.filter((f) => f.origin === "corpus");
-    const gauntlet = findings.filter((f) => f.origin === "gauntlet");
 
     // Scored against the corpus only. A clean control promises that no corpus
     // rule fires on it; nothing ever promised the gauntlet would stay quiet.
@@ -269,28 +262,7 @@ async function main(): Promise<number> {
     if (values.json) {
       process.stdout.write(JSON.stringify(findings, null, 2) + "\n");
     } else {
-      for (const f of corpus) {
-        const tag = f.severity === "error" ? pc.red("ERROR") : pc.yellow("WARN ");
-        process.stdout.write(`${tag} ${pc.bold(f.file)}:${f.line}\n`);
-        process.stdout.write(`  ${f.statement} ${pc.dim(`[${f.ruleId}]`)}\n`);
-        process.stdout.write(`  ${pc.dim(f.excerpt)}\n\n`);
-      }
-      // One line each: the gauntlet is there to be seen, not to dominate.
-      for (const f of gauntlet) {
-        process.stdout.write(
-          `${pc.dim("note ")} ${f.file}:${f.line} ${f.statement} ${pc.dim(`[${f.ruleId}]`)}\n`,
-        );
-      }
-      if (gauntlet.length) process.stdout.write("\n");
-
-      const errors = corpus.filter((f) => f.severity === "error").length;
-      process.stdout.write(
-        pc.dim(
-          `${rules.length} rules · ${files.length} files · ` +
-            `${errors} error(s), ${corpus.length - errors} warning(s) · ` +
-            `${gauntlet.length} gauntlet note(s), not blocking\n`,
-        ),
-      );
+      printFindings(findings, rules, files);
     }
 
     return corpus.some((f) => f.severity === "error") ? 1 : 0;

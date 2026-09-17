@@ -98,6 +98,61 @@ gate enforces.
 - **Scheduled whole-repo audit** — a fourth cadence. Per-diff checks
   structurally cannot see "this is the fourth way we validate things".
 
+### One table decides what runs where
+
+What each call site runs used to be decided in four places: `src/hook.ts` chose
+the fast engines, `src/stop.ts` ran everything unless a `--mechanical` flag in
+someone's settings said otherwise, the pre-commit hook ran whatever command
+`init` had written into it, and CI ran whatever a workflow listed. The README
+described what that code happened to do. It drifted: opengrep reached the commit
+hook, adding about 5s to every commit, without anyone deciding it should.
+
+Now it is one table, `src/sites.ts`, in three layers owned by whoever knows the
+answer:
+
+| layer | lives in | example |
+| --- | --- | --- |
+| engine facts | this repo, on each adapter | opengrep is `slow` |
+| default policy | this repo, `src/sites.ts` | `edit` and `commit` run the `fast` scanners; `stop` and `ci` run `all` |
+| repo overrides | a consuming repo's `qa.config.yaml`, under `callSites` | skip opengrep at Stop; put slow scanners back on commit |
+
+- **Each call site is a command.** `hook`, `stop`, `commit`, `ci`. A generated
+  file names the call site, never the checks: the pre-commit hook `init` writes
+  is `agentic-qa commit`, so a repo set up long ago still gets today's policy
+  rather than whatever command its hook was written with. `rules` and
+  `contracts` stay as commands a person runs by hand, with every engine.
+- **Defaults select by property, never by name.** `fast` is every engine not
+  marked slow, so a slow engine added later stays out of the quick call sites
+  without anyone remembering an exception. Naming an engine is for a repo's
+  overrides, where it is choosing its own trade-off.
+- **Commit runs the fast scanners by default.** Previously undecided; opengrep
+  had reached the commit hook unexamined. Every commit pays the commit row, a
+  person's as much as an agent's, and a slow commit hook is how `--no-verify`
+  becomes a habit. The slow engines' corpus rules still block at Stop and in CI,
+  and CI is the gate that cannot be skipped. A repo that wants them on commit
+  sets `callSites.commit.scanners: all`.
+- **Two cells are fixed.** `edit` and `commit` can never run the judgment rules
+  or test contracts: the per-edit hook can run concurrently and those tiers
+  write committed ledgers, and a commit must never cost money or wait on a
+  model. Both were invariants already; the table refuses to load an override
+  that breaks one, rather than letting config quietly do what the code forbids.
+- **Overrides are validated strictly.** An unknown call site, setting or scanner
+  name fails the load. A misspelled override that is silently ignored is a check
+  someone believes they changed.
+- **Flags are overrides of the same table.** `stop --mechanical` switches off
+  that row's judgment cells and nothing else. This repo's own free-tier Stop,
+  once a flag in its settings that differed from what `init` writes, is now
+  `callSites.stop` in its `qa.config.yaml`, the layer meant for it.
+- **`ci` skips the judgment tiers in CI without an API key**, loudly, rather than
+  failing, so a fork's pull request still gets the scanners. Locally the same
+  command uses Claude Code's login.
+- **The README's table is rendered from the defaults**, and a test requires the
+  README to contain it exactly, including which scanners each group resolves to.
+
+Accepted: skipping a scanner by name leaves its corpus rules to the other call
+sites without a warning. That is the trade-off a repo is choosing when it names
+one, and the defaults never do it.
+
 ### CI is documented, not generated
 
 `init` does not write a CI workflow. It is provider-specific, it is committed,
@@ -111,9 +166,10 @@ to run a command in their own CI, and `.github/workflows/qa.yml` here is a
 working example. An opt-in `init --ci github` that writes the workflow and
 prints which secret to add is a reasonable convenience later, not the default.
 
-What belongs there: the mechanical tier again as cheap insurance against
-`--no-verify`, plus `rules --llm` and `contracts`, the two that cannot gate a
-commit because they cost money and need the network.
+What belongs there is `agentic-qa ci`: the ci row of the call-site table, which
+is every scanner again as insurance against `--no-verify`, plus the judgment
+rules and test contracts, the two that cannot gate a commit because they cost
+money and need the network.
 
 ### `init` installs nothing you did not ask for
 
@@ -267,7 +323,7 @@ unrequested change this tool objects to. It is also a speed bump rather than a
 lock, since it matches how a command starts. Whether stronger approval is worth
 building is an open question.
 
-Two known edges, accepted for now and worth watching in real use (item 2). A
+Two known edges, accepted for now and worth watching in real use (item 1). A
 renamed file has no committed exceptions until the rename is committed. And an
 exception a person asked the agent to add is listed as refused on every turn
 until it is committed, which could read as nagging.
@@ -612,7 +668,7 @@ install provisioned automatically. Four corpus rules are delegated to them
 other mechanical rule is still a pattern, some on purpose. opengrep claims no
 corpus rule yet. `mutate` is still the hand-rolled version rather than Stryker.
 
-Everything listed below runs. First in Next is one table for what runs where.
+Everything listed below runs. First in Next is using it for real on `orders-admin`.
 
 **Done and verified.**
 
@@ -735,6 +791,11 @@ Everything listed below runs. First in Next is one table for what runs where.
   without a run. Stop runs `--mechanical` there, so the hook makes no model
   calls of its own; the judgment tiers leave through the same output code.
 
+- One table for what runs where (`src/sites.ts`): each call site is a command
+  (`hook`, `stop`, `commit`, `ci`) that reads its row, a repo overrides cells
+  under `callSites` in `qa.config.yaml`, and the README's table is rendered from
+  the defaults and held to them by a test. Commit now runs the fast scanners
+  only. See "One table decides what runs where".
 ---
 
 ## Next
@@ -745,50 +806,7 @@ whether a gate can be believed, whether it can be configured, and whether it
 survives real use. Writing rules into a machine that cannot yet be trusted only
 produces more output nobody can rely on.
 
-### 1. One table for what runs where
-
-Today nothing defines it. It is spread across code and generated text:
-
-| call site | scanners | judgment tier + contracts | decided by |
-| --- | --- | --- | --- |
-| after each edit | fast only | no | `src/hook.ts`, via each adapter's `slow` flag |
-| Stop | all | yes, unless `--mechanical` | `src/stop.ts`, plus a CLI flag in settings |
-| commit | all | no | the command `init` writes into `hooks/pre-commit` |
-| CI | all | if the workflow adds `--llm` and `contracts` | whatever workflow a person writes |
-
-The README describes what that code happens to do, so the two can drift, and
-already did once: opengrep reached the commit hook, adding about 5s to every
-commit, without anyone deciding it should. It is also the knob stack profiles,
-framework gauntlets and a personal mode all need.
-
-The shape is three layers, each owned by whoever actually knows the answer:
-
-| layer | lives in | example |
-| --- | --- | --- |
-| engine facts | this repo, on each adapter | opengrep is `slow` |
-| default policy | this repo, one table | `edit` runs `fast`; `stop`, `commit`, `ci` run `fast` and `slow` |
-| repo overrides | the consuming repo's `qa.config.yaml` | skip opengrep on commit; accept slow checks per edit |
-
-- **Global decisions are ours to make.** Keeping opengrep out of the per-edit
-  hook is a fact about an engine this package ships, not a preference of the
-  repo using it, so it belongs in the defaults rather than in every repo's
-  config.
-- **Defaults select by property, not by name.** `edit` runs the `fast` group
-  rather than "everything except opengrep", so a slow engine added later stays
-  out of the per-edit hook without anyone remembering an exception. Named
-  per-engine exceptions belong in a repo's overrides, where a repo is choosing
-  its own trade-off.
-- **Each call site says whether judgment and contracts run**, in the same table.
-- **Not yet decided: whether `commit` runs the slow group by default.** It does
-  today only because opengrep landed there unexamined; this item decides it on
-  purpose.
-
-`qa.config.yaml` overrides any cell. The existing flags
-(`--mechanical`, `--llm`) become overrides of the same table rather than
-separate logic. A test checks the README's table against the defaults, so the
-documentation cannot drift from the code again.
-
-### 2. Use it for real on `orders-admin`
+### 1. Use it for real on `orders-admin`
 
 `orders-admin` is on the current version, with the working Stop hook. Build an
 actual feature there with the hooks live, and record what nothing else can show:
@@ -807,18 +825,19 @@ actual feature there with the hooks live, and record what nothing else can show:
 This is the calibration the fixtures cannot provide, and its findings will
 re-rank the items below it.
 
-### 3. CI documentation a consuming repo can follow
+### 2. CI documentation a consuming repo can follow
 
-`init` deliberately does not write CI (see "CI is documented, not generated"),
-but the steps have multiplied: install, `setup`, caching the tool cache, the
-mechanical tier, and the key-gated judgment steps. This repo's workflow is not a
+`init` deliberately does not write CI (see "CI is documented, not generated").
+`agentic-qa ci` collapsed the checks into one step, but a working workflow still
+needs install, `setup`, caching the tool cache and the key as a secret, and
+nobody has run that outside this repo. This repo's workflow is not a
 fair example — it builds agentic-qa from source and runs `node dist/cli.js`,
 where a consumer runs `npx agentic-qa`. Write a GitHub Actions example for a
 consuming repo into the README, and prove it by running it in a real consuming
 repo before documenting it; `orders-admin` has no remote, so that needs one.
 Other providers get the command list, not examples.
 
-### 4. Adoption on an existing repo: the baseline ratchet
+### 3. Adoption on an existing repo: the baseline ratchet
 
 Half-solved by the severity split, and made more urgent by it. Pointing the
 gauntlet at an existing repo produces far more findings than 22 hand-written
@@ -831,7 +850,7 @@ and gets switched off the same afternoon. Snapshot the existing violations, fail
 only on new ones, and require the count to trend down. Every successful linter
 adoption works this way. It has to be designed in, not bolted on.
 
-### 5. Mutation grounding: adopt Stryker, then give it a trigger
+### 4. Mutation grounding: adopt Stryker, then give it a trigger
 
 Two problems, and the survey solved one of them. **StrykerJS** is mature mutation
 testing for JS/TS with deterministic operators, `--incremental` backed by its own
@@ -853,7 +872,7 @@ verdict changed since the last run, which the committed ledger already knows.
 Needs a `--changed` selection over the ledger, and a decision about where it is
 invoked from.
 
-### 6. Packaging and configuration
+### 5. Packaging and configuration
 
 Mostly done. The package builds on install via `prepare`, ships `dist/` and the
 rules corpus, and has been verified by packing it, installing the tarball into a
@@ -872,17 +891,17 @@ What is left:
 - **Versioning the rules corpus separately** from the tool, so rules can be
   updated without shipping a new binary, and a repo can pin them.
 - **Stack profiles, framework gauntlets and a personal mode.** Designed in
-  outline under "Raised, not yet designed"; all three build on item 1's table.
+  outline under "Raised, not yet designed"; all three build on the call-site table.
 
-### 7. Speed: a long-lived process
+### 6. Speed: a long-lived process
 
 Not needed yet. A fresh process per hook call spends almost all its time
 loading: eslint takes about 500ms to load and 20ms to lint, opengrep seconds to
 load and milliseconds to scan. A long-lived process would bring a per-edit check
 near 50ms and let Stop run opengrep without its load cost. Worth it only once
-item 2 shows latency is actually hurting.
+item 1 shows latency is actually hurting.
 
-### 8. Make the gauntlet robust where no engine covers the stack
+### 7. Make the gauntlet robust where no engine covers the stack
 
 Separate from the corpus. The gauntlet is meant to be broad coverage for free,
 and it has holes wherever the engines and their plugins do not know the target
@@ -901,9 +920,9 @@ stack:
 The probe app behind these measurements is `fixtures/probes/gauntlet-hono-express`.
 
 The rules written here are gauntlet rules, not corpus promises: they widen what
-is noticed, and only a corpus claim (item 9) makes one block.
+is noticed, and only a corpus claim (item 8) makes one block.
 
-### 9. The corpus, last
+### 8. The corpus, last
 
 Everything that writes, moves or retires a rule. Last because a rule is only
 worth as much as the machine that enforces it.
@@ -1053,7 +1072,7 @@ Recorded from the build, so they are not relitigated.
   tsconfig the checked repo may not have, and a program build per run.
 - **Gauntlet noise is already measurable.** On this repo: 31 notes, including a
   real unused import, and `sonarjs/no-os-command-from-path` on every
-  `execFileSync("git")`, which is noise here. The answer is the ratchet (item 4)
+  `execFileSync("git")`, which is noise here. The answer is the ratchet (item 3)
   and trimming the preset deliberately, not filtering output to the corpus.
 
 ### The judgment tier is the part with no free incumbent
@@ -1150,6 +1169,6 @@ both — but none of them is settled.
   observability and ops, performance and reliability). Infrastructure has no
   pack: its one Terraform rule, `sec.no-world-open-security-group`, is filed
   under security. Creating empty packs now would fix a taxonomy before the
-  classification pass (item 9) has shown what the concepts actually are; the
+  classification pass (item 8) has shown what the concepts actually are; the
   pack list is more likely to fall out of that pass than to precede it. An
   `infra` pack is the one that is clearly missing already.
